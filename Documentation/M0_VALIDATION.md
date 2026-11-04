@@ -3,7 +3,7 @@
 ## Environment and scope
 - Apple Silicon Mac; Xcode 27.2 (27B52), Swift 6.4.2, Metal Toolchain 32023.922.
 - Compile/deployment target: macOS 14.0. Runtime compatibility with macOS 14 has not been certified on this machine.
-- Version 1.0.1, build 2. This validates bootstrap, not the Living Window gate or the full product.
+- Version 1.0.2, build 3 (M0 introduced in 1.0.1). This validates bootstrap, not the Living Window gate or the full product.
 
 ## Initial failures, resolved
 - Missing official Metal Toolchain, installed with `xcodebuild -downloadComponent MetalToolchain`.
@@ -27,6 +27,6 @@
 - No permission was granted automatically and no window pixels were captured for this validation.
 - CoreSimulator mismatch and generated Metal-bundle node warnings from Xcode are non-blocking for these macOS builds.
 - Ad-hoc signing is development-only; stable distribution signing and notarization remain M9 work.
-- CI is configured, not remotely executed. No remote repository was provided for push.
+- CI is configured; its remote status is independent of the local test results. The owner-provided origin is `https://github.com/Invernomut0/AETHER.git` on `main`.
 - M1 must replace the unsafe first-AX-window controller before exposing native control, then verify multiple real Test Lab windows with explicit Accessibility access.
 - M2 must implement ScreenCaptureKit output and reliable overlay cleanup before any visual effect is considered delivered.

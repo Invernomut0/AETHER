@@ -1,4 +1,4 @@
-# AETHER 1.0.1
+# AETHER 1.0.2
 ## The Desktop, in Motion.
 
 AETHER is a native macOS window-management and visual-effects system built with Swift, AppKit, SwiftUI, ScreenCaptureKit and Metal.
@@ -25,7 +25,7 @@ Configuration is stored at `~/Library/Application Support/AETHER/configuration.j
 
 Screen Recording remains part of the approved main visual-effects path. Native move/resize can use Accessibility without capture, but deforming another app's captured content requires authorization. [Wobbly](https://github.com/jsgrrchg/Wobbly) uses the same capture-plus-Metal principle and also requires Screen Recording. It is GPL-3.0-or-later: it is a reference, not a source dependency. AeroSpace is a useful tiling reference but documents a private AX-to-window-ID API, which is not an approved stable dependency for AETHER. No permission bypass is proposed.
 
-See `TODO.md`, `IMPLEMENTATION_STATUS.md` and `Documentation/MILESTONE_TASKS.md` for the actual milestone boundary. No Git remote is configured yet; publishing requires an owner-provided remote.
+See `TODO.md`, `IMPLEMENTATION_STATUS.md` and `Documentation/MILESTONE_TASKS.md` for the actual milestone boundary. The owner-provided source repository is [Invernomut0/AETHER](https://github.com/Invernomut0/AETHER), tracked as `origin` on branch `main`. Remote CI results must be checked separately from local validation.
 
 Local validation evidence and remaining manual checks are recorded in `Documentation/M0_VALIDATION.md`.
 

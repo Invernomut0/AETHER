@@ -4,7 +4,7 @@ This repository intentionally distinguishes foundations from production-complete
 
 ## Local milestone baseline — 2026-11-04
 
-Version 1.0.1 (build 2) implements the M0 bootstrap slice. Local Swift package build/tests and both Xcode app builds have passed on Apple Silicon with Xcode 27.2 / Swift 6.4.2 after installing the official Metal Toolchain. CI is configured but has not been run remotely. Deployment target 14.0 is a compile target, not a claim of runtime certification on macOS 14.
+Version 1.0.2 (build 3) retains the M0 bootstrap slice introduced in 1.0.1. Local Swift package build/tests and both Xcode app builds have passed on Apple Silicon with Xcode 27.2 / Swift 6.4.2 after installing the official Metal Toolchain. CI is configured; remote run status must be checked on GitHub independently. Deployment target 14.0 is a compile target, not a claim of runtime certification on macOS 14.
 
 Configuration is loaded/migrated before readiness. Startup inspects permissions without prompting; prompts require an explicit button press. M1 window control and M2 capture/overlay are not exposed as complete. The unsafe first-window AX controller remains a known M1 blocker and is not connected to the UI.
 

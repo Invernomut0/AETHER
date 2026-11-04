@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2 — Repository publication (2026-11-04)
+- Configure the owner-provided GitHub origin and document the main branch publication workflow.
+- Increment app version to 1.0.2 (build 3); M0 behavior and M1/M2 limitations are unchanged.
+
 ## 1.0.1 — M0 bootstrap (2026-11-04)
 - Validate on macOS with Xcode 27.2 / Swift 6.4.2 and the official Metal Toolchain.
 - Fix display syntax, missing cross-module model initializers, permission isolation and SwiftUI app entry-point builds.
