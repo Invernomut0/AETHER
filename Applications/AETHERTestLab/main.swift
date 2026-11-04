@@ -6,12 +6,19 @@ struct AETHERTestLabApp: App {
     var body: some Scene {
         WindowGroup("AETHER Test Lab") {
             TestLabView()
-                .frame(minWidth: 700, minHeight: 500)
+                .frame(minWidth: 760, minHeight: 540)
+                .task {
+                    TestWindowController.shared.installM1FixturesIfRequested(arguments: ProcessInfo.processInfo.arguments)
+                }
         }
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Open Test Window") { TestWindowController.shared.openWindow() }
+                Button("Open Resizable Fixture") { TestWindowController.shared.openResizableFixture() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
+                Button("Open Fixed-Size Fixture") { TestWindowController.shared.openFixedSizeFixture() }
+                    .keyboardShortcut("f", modifiers: [.command, .shift])
+                Button("Open Overlapping Fixtures") { TestWindowController.shared.openOverlappingFixtures() }
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
             }
         }
     }
@@ -19,27 +26,33 @@ struct AETHERTestLabApp: App {
 
 struct TestLabView: View {
     @State private var counter = 0
-    @State private var isAnimated = true
 
     var body: some View {
         VStack(spacing: 20) {
             Text("AETHER Test Lab").font(.largeTitle.bold())
-            Text("Controlled window fixtures for discovery, capture and overlay integration tests.")
+            Text("Live NSWindow fixtures for M1 discovery/control integration tests.")
                 .foregroundStyle(.secondary)
-            HStack {
-                Button("Open Window") { TestWindowController.shared.openWindow() }
+
+            HStack(spacing: 12) {
+                Button("Open Resizable Fixture") { TestWindowController.shared.openResizableFixture() }
+                Button("Open Fixed-Size Fixture") { TestWindowController.shared.openFixedSizeFixture() }
+                Button("Open Two Overlapping Fixtures") { TestWindowController.shared.openOverlappingFixtures() }
                 Button("Increment Content") { counter += 1 }
-                Toggle("Animate", isOn: $isAnimated)
-                    .toggleStyle(.switch)
             }
+
             Text("Dynamic content: \(counter)")
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .padding(40)
                 .background(.blue.opacity(0.15), in: RoundedRectangle(cornerRadius: 20))
+
+            VStack(spacing: 6) {
+                Text("Launch with --m1-fixtures to spawn deterministic startup windows.")
+                Text("Expected titles: Resizable A/B/Disposable, Fixed, and two identical Overlap windows.")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
             Spacer()
-            Text("Also create manual fixtures: fixed-size, transparent, fullscreen and multi-window.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .padding(30)
     }
@@ -48,28 +61,119 @@ struct TestLabView: View {
 @MainActor
 final class TestWindowController {
     static let shared = TestWindowController()
-    private var windows: [NSWindow] = []
 
-    func openWindow() {
-        let window = NSWindow(
-            contentRect: NSRect(x: 120, y: 120, width: 520, height: 340),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "AETHER Fixture \(windows.count + 1)"
-        window.contentView = NSHostingView(rootView: FixtureView())
+    enum Titles {
+        static let resizableA = "M1 Fixture Resizable A"
+        static let resizableB = "M1 Fixture Resizable B"
+        static let resizableDisposable = "M1 Fixture Resizable Disposable"
+        static let fixed = "M1 Fixture Fixed"
+        static let overlap = "M1 Fixture Overlap"
+    }
+
+    private enum Frames {
+        static let resizableA = NSRect(x: 140, y: 120, width: 640, height: 420)
+        static let resizableB = NSRect(x: 220, y: 180, width: 620, height: 400)
+        static let resizableDisposable = NSRect(x: 300, y: 240, width: 600, height: 380)
+        static let fixed = NSRect(x: 380, y: 300, width: 460, height: 280)
+        static let overlap = NSRect(x: 460, y: 360, width: 520, height: 320)
+    }
+
+    private var windows: [ObjectIdentifier: NSWindow] = [:]
+    private var delegates: [ObjectIdentifier: FixtureWindowDelegate] = [:]
+    private var didInstallLaunchFixtures = false
+    private var manualResizableIndex = 0
+
+    func installM1FixturesIfRequested(arguments: [String]) {
+        guard arguments.contains("--m1-fixtures"), !didInstallLaunchFixtures else { return }
+        didInstallLaunchFixtures = true
+        openResizableFixture(title: Titles.resizableA, frame: Frames.resizableA)
+        openResizableFixture(title: Titles.resizableB, frame: Frames.resizableB)
+        openResizableFixture(title: Titles.resizableDisposable, frame: Frames.resizableDisposable)
+        openFixedSizeFixture()
+        openOverlappingFixtures()
+    }
+
+    func openResizableFixture() {
+        manualResizableIndex += 1
+        let title = String(format: "M1 Fixture Resizable Manual %02d", manualResizableIndex)
+        let frame = NSRect(x: 140 + CGFloat(manualResizableIndex * 28),
+                           y: 120 + CGFloat(manualResizableIndex * 24),
+                           width: 640, height: 420)
+        openResizableFixture(title: title, frame: frame)
+    }
+
+    func openFixedSizeFixture() {
+        let styleMask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable]
+        openWindow(title: Titles.fixed, frame: Frames.fixed, styleMask: styleMask, fixedContentSize: Frames.fixed.size)
+    }
+
+    func openOverlappingFixtures() {
+        let styleMask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
+        openWindow(title: Titles.overlap, frame: Frames.overlap, styleMask: styleMask)
+        openWindow(title: Titles.overlap, frame: Frames.overlap, styleMask: styleMask)
+    }
+
+    private func openResizableFixture(title: String, frame: NSRect) {
+        let styleMask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
+        openWindow(title: title, frame: frame, styleMask: styleMask)
+    }
+
+    private func openWindow(
+        title: String,
+        frame: NSRect,
+        styleMask: NSWindow.StyleMask,
+        fixedContentSize: NSSize? = nil
+    ) {
+        let window = NSWindow(contentRect: frame, styleMask: styleMask, backing: .buffered, defer: false)
+        window.title = title
+        window.isReleasedWhenClosed = false
+        if let fixedContentSize {
+            window.contentMinSize = fixedContentSize
+            window.contentMaxSize = fixedContentSize
+        }
+        window.contentView = NSHostingView(rootView: FixtureView(title: title))
+        register(window)
         window.makeKeyAndOrderFront(nil)
-        windows.append(window)
+    }
+
+    private func register(_ window: NSWindow) {
+        let key = ObjectIdentifier(window)
+        let delegate = FixtureWindowDelegate { [weak self, weak window] in
+            guard let self, let window else { return }
+            self.unregister(window)
+        }
+        delegates[key] = delegate
+        windows[key] = window
+        window.delegate = delegate
+    }
+
+    private func unregister(_ window: NSWindow) {
+        let key = ObjectIdentifier(window)
+        windows.removeValue(forKey: key)
+        delegates.removeValue(forKey: key)
+    }
+}
+
+private final class FixtureWindowDelegate: NSObject, NSWindowDelegate {
+    private let onClose: () -> Void
+
+    init(onClose: @escaping () -> Void) {
+        self.onClose = onClose
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        onClose()
     }
 }
 
 struct FixtureView: View {
+    let title: String
     @State private var value = 0
+
     var body: some View {
         VStack(spacing: 18) {
-            Text("AETHER Window Fixture").font(.title.bold())
-            Text("Change content while AETHER captures this window.")
+            Text(title).font(.title.bold())
+            Text("Live fixture content for discovery, correlation and AX control tests.")
             Text("Value: \(value)").font(.system(size: 42, weight: .semibold))
             Button("Update") { value += 1 }
         }

@@ -2,6 +2,8 @@
 
 Durations are indicative estimates for one developer with coding-agent assistance, not guarantees.
 
+Local progress (1.0.3): M0 and the conservative M1 Test Lab gate have passed. M2 is next; Living Window remains unproven until capture, overlay and reliable teardown are integrated. See `M1_VALIDATION.md` for evidence and platform review limitations.
+
 | Milestone | Focus | Estimate | Exit gate |
 |---|---|---:|---|
 | M0 | Project bootstrap, CI, logging, dependency graph | 1 week | Clean build and tests |

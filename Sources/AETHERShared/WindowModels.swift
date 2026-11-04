@@ -27,15 +27,18 @@ public struct WindowDescriptor: Identifiable, Sendable, Equatable {
     public let isOnScreen: Bool
     public let isMinimized: Bool
     public let capabilities: WindowCapabilities
+    /// Present only when an unambiguous AX element has been registered in this session.
+    public let runtimeHandle: RuntimeWindowHandle?
 
     public init(id: WindowID, processID: Int32, bundleIdentifier: String?,
                 applicationName: String, title: String?, frame: CodableRect?,
                 displayID: DisplayID?, isOnScreen: Bool, isMinimized: Bool,
-                capabilities: WindowCapabilities) {
+                capabilities: WindowCapabilities, runtimeHandle: RuntimeWindowHandle? = nil) {
         self.id = id; self.processID = processID; self.bundleIdentifier = bundleIdentifier
         self.applicationName = applicationName; self.title = title; self.frame = frame
         self.displayID = displayID; self.isOnScreen = isOnScreen
         self.isMinimized = isMinimized; self.capabilities = capabilities
+        self.runtimeHandle = runtimeHandle
     }
 }
 

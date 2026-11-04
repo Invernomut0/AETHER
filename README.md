@@ -1,11 +1,11 @@
-# AETHER 1.0.2
+# AETHER 1.0.3
 ## The Desktop, in Motion.
 
 AETHER is a native macOS window-management and visual-effects system built with Swift, AppKit, SwiftUI, ScreenCaptureKit and Metal.
 
 **Product direction:** hybrid native-window control + temporary Metal overlays; effects-first; public APIs as the stable baseline; advanced integrations isolated behind optional adapters.
 
-> Engineering status: M0 bootstrap is implemented and locally built/tested on macOS. M1 window control and the Living Window capture/overlay gate remain incomplete. No private API behavior is assumed to work, and catalog descriptors are not shipped effects.
+> Engineering status: M0 bootstrap and the M1 native window-control slice are implemented and locally tested on macOS with real Test Lab windows. M2 and the Living Window capture/overlay gate remain incomplete. No private API behavior is assumed to work, and catalog descriptors are not shipped effects.
 
 ## Open in Xcode
 
@@ -21,13 +21,21 @@ AETHER is a native macOS window-management and visual-effects system built with 
 
 The dashboard reports live bootstrap readiness, configuration schema, Accessibility and Screen Recording status. Startup does not request permissions or start a capture. Use the explicit request buttons to grant capabilities; refresh after changing System Settings, or relaunch if required by macOS.
 
-Configuration is stored at `~/Library/Application Support/AETHER/configuration.json`. Missing files are initialized from schema 1 defaults. Unversioned/schema 0 configurations migrate while retaining recognized settings. Malformed files and future schemas produce a visible startup error without resetting user data; repair the file and retry. Unified logs use subsystem `com.aether.desktop` with `lifecycle`, `configuration` and `permissions` categories, excluding window titles and captured content.
+Configuration is stored at `~/Library/Application Support/AETHER/configuration.json`. Missing files are initialized from schema 1 defaults. Unversioned/schema 0 configurations migrate while retaining recognized settings. Malformed files and future schemas produce a visible startup error without resetting user data; repair the file and retry. Unified logs use subsystem `com.aether.desktop` with `lifecycle`, `configuration`, `permissions` and `windows` categories, excluding window titles and captured content.
+
+## Native windows (M1)
+
+Open **Windows** in AETHER's sidebar and press **Refresh** after changing Accessibility access. The live list includes normal-layer on/off-screen windows exposed by CoreGraphics. **Focus**, **Center** and **Left half** are enabled only for a registered, unambiguous AX match with the required capabilities. Filter by application/title or hide read-only rows. No capture is started and Screen Recording is not required for native control.
+
+Correlation uses PID, global point geometry and titles only when available, with uniqueness in both directions. Identical overlapping windows, inaccessible AX elements and missing process identities remain read-only. Handles are session-scoped, not persistent CG IDs; each operation revalidates the target. Geometry success requires AX and CG convergence, not just a successful setter call. Rejected/partially applied changes are reported without blindly rolling back over user actions; refresh before retrying. Closing the panel cancels its task.
+
+For live integration, quit any running Test Lab instance, then run `bash Scripts/test-window-integration.sh`. This builds the apps, launches real resizable/fixed/overlapping fixtures and explicitly enables tests that move, resize, focus and close **only those fixtures**. It never grants permissions. Ordinary CI skips mutation tests; a skip is not a passed integration gate. See `Documentation/M1_VALIDATION.md` for evidence and outstanding manual checks.
 
 Screen Recording remains part of the approved main visual-effects path. Native move/resize can use Accessibility without capture, but deforming another app's captured content requires authorization. [Wobbly](https://github.com/jsgrrchg/Wobbly) uses the same capture-plus-Metal principle and also requires Screen Recording. It is GPL-3.0-or-later: it is a reference, not a source dependency. AeroSpace is a useful tiling reference but documents a private AX-to-window-ID API, which is not an approved stable dependency for AETHER. No permission bypass is proposed.
 
 See `TODO.md`, `IMPLEMENTATION_STATUS.md` and `Documentation/MILESTONE_TASKS.md` for the actual milestone boundary. The owner-provided source repository is [Invernomut0/AETHER](https://github.com/Invernomut0/AETHER), tracked as `origin` on branch `main`. Remote CI results must be checked separately from local validation.
 
-Local validation evidence and remaining manual checks are recorded in `Documentation/M0_VALIDATION.md`.
+Local validation evidence and remaining manual checks are recorded in `Documentation/M0_VALIDATION.md` and `Documentation/M1_VALIDATION.md`.
 
 The package manifest targets macOS 14.0 and Apple Silicon as the primary architecture. Some advanced APIs and behaviors are availability-gated and must be checked against the SDK installed on the build machine.
 
@@ -45,7 +53,7 @@ The package manifest targets macOS 14.0 and Apple Silicon as the primary archite
 - `Sources/AETHERPersistence`: configuration and preset persistence contracts.
 - `Sources/AETHERIntelligence`: rules and optional LLM integration contracts.
 - `Sources/AETHERInterface`: SwiftUI dashboard and settings UI.
-- `Applications/AETHERTestLab`: controlled test-app specification and starter target.
+- `Applications/AETHERTestLab`: real interactive resizable, fixed-size and overlapping window fixtures.
 - `Tests`: unit and integration test targets.
 - `Documentation`: full product and engineering specification.
 - `.github`: Copilot instructions and issue templates.

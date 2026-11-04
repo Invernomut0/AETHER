@@ -5,4 +5,4 @@ swift build
 swift test --enable-code-coverage
 bash Scripts/coverage.sh
 bash Scripts/build-apps.sh
-echo "M0 validation completed. M1 and Living Window integration gates still require explicit user permissions and Test Lab verification."
+echo "Package and app validation completed. Live M1 fixture tests require Scripts/test-window-integration.sh; Living Window (M2) remains pending."

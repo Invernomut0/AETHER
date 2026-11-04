@@ -4,16 +4,18 @@
 - [x] Verify Package.swift and all targets build on the local Mac.
 - [x] Add CI build/test workflow (remote execution pending).
 - [x] Add structured logging categories.
-- [x] Add app bootstrap lifecycle and dependency composition root (M1/M2 services remain disconnected).
+- [x] Add app bootstrap lifecycle and dependency composition root (M1 connected; M2 remains disconnected).
 - [x] Add configuration loading and default migration.
 
 ## M1 Window Intelligence
-- [ ] Enumerate on-screen and off-screen windows.
-- [ ] Correlate CGWindow and AXUIElement robustly.
-- [ ] Probe each AX attribute and settable capability.
-- [ ] Verify frame changes after requests.
-- [ ] Track process/window generation and disappearance.
-- [ ] Test multiple windows per process.
+- [x] Enumerate on-screen and off-screen windows exposed by CG's normal-layer inventory.
+- [x] Correlate CGWindow and AXUIElement conservatively; reject ambiguous mappings.
+- [x] Probe frame attributes and position/size/main settable capability; inspect raise support.
+- [x] Verify frame changes after requests with AX/CG convergence.
+- [x] Track process launch identity/window generation and disappearance on refresh/control.
+- [x] Test multiple windows per process using real external Test Lab fixtures.
+
+Local gate evidence and remaining manual platform checks: `M1_VALIDATION.md`. Checked does not imply universal AX support or release certification.
 
 ## M2 Capture & Overlay
 - [ ] Implement SCStreamOutput.

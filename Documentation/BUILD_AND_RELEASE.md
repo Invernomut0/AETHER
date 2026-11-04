@@ -9,7 +9,9 @@ Outputs:
 - `.build/Xcode/Build/Products/Debug/AETHER.app`
 - `.build/Xcode/Build/Products/Debug/AETHER Test Lab.app`
 
-Shared `AETHERApp` and `AETHERTestLab` schemes are committed. `Package.swift` contains libraries and tests, not app executable targets. Open the committed `AETHER.xcodeproj` for running apps. The project and `project.yml` both specify version 1.0.2 (build 3), Swift 6 and macOS 14. `-parse-as-library` allows the SwiftUI `@main` declarations in files named `main.swift`.
+Shared `AETHERApp` and `AETHERTestLab` schemes are committed. `Package.swift` contains libraries and tests, not app executable targets. Open the committed `AETHER.xcodeproj` for running apps. The project and `project.yml` both specify version 1.0.3 (build 4), Swift 6 and macOS 14. `-parse-as-library` allows the SwiftUI `@main` declarations in files named `main.swift`.
+
+M1 live control tests require a local interactive desktop and explicit Accessibility consent. Quit Test Lab and run `bash Scripts/test-window-integration.sh`; see `TESTING.md`. CI intentionally does not auto-grant permissions or run fixture mutations.
 
 Known local tool warnings: Xcode 27.2 can report an out-of-date iOS CoreSimulator and a missing creator for the generated Metal resource bundle's `Contents/MacOS` node. These did not prevent native macOS builds. Do not interpret simulator warnings as evidence that iOS support exists.
 

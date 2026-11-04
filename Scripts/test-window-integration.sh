@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# Opt-in only: mutates Test Lab fixtures, never grants permissions or touches other apps.
+if pgrep -x 'AETHER Test Lab' >/dev/null; then
+    echo "Quit Test Lab before running this script so fixture identities are unique."
+    exit 2
+fi
+bash Scripts/build-apps.sh
+open -n '.build/Xcode/Build/Products/Debug/AETHER Test Lab.app' --args --m1-fixtures
+AETHER_RUN_WINDOW_INTEGRATION=1 swift test --filter NativeWindowTests

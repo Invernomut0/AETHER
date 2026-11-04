@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.3 — M1 native window intelligence (2026-11-04)
+- Replace first-AX-window control with mutually unique public-API correlation and session-scoped generations.
+- Enumerate normal-layer CG windows, enrich live application/display metadata, probe AX capabilities and invalidate disappeared or ambiguous targets.
+- Isolate AX references and bounded IPC in a dedicated actor; verify selected-window focus and geometry through actual readback.
+- Handle WindowServer publication lag and AppKit resize clamping by positioning before growth and checking AX/CG convergence.
+- Add the Windows dashboard panel with explicit refresh, capability-gated Focus/Center/Left half controls and structured task cancellation.
+- Add real multiwindow Test Lab fixtures and opt-in native integration tests; Screen Recording is not required for native control.
+- Increment app version to 1.0.3 (build 4). M2 capture/overlay, multi-display certification and release hardening remain pending.
+
 ## 1.0.2 — Repository publication (2026-11-04)
 - Configure the owner-provided GitHub origin and document the main branch publication workflow.
 - Increment app version to 1.0.2 (build 3); M0 behavior and M1/M2 limitations are unchanged.

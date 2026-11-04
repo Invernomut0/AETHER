@@ -4,7 +4,7 @@ import AETHERShared
 public struct AetherDashboardView: View {
     private let runtime: AetherRuntimeModel
     @State private var selectedSection = "Overview"
-    private let sections = ["Overview", "Effects", "Animation Studio", "Physics", "Layouts", "Workspaces", "Rules", "Performance", "Diagnostics", "Settings"]
+    private let sections = ["Overview", "Windows", "Effects", "Animation Studio", "Physics", "Layouts", "Workspaces", "Rules", "Performance", "Diagnostics", "Settings"]
 
     public init(runtime: AetherRuntimeModel = AetherRuntimeModel()) {
         self.runtime = runtime
@@ -24,6 +24,8 @@ public struct AetherDashboardView: View {
                     Text(selectedSection).font(.largeTitle.bold())
                     if selectedSection == "Overview" {
                         overview
+                    } else if selectedSection == "Windows" {
+                        NativeWindowsPanel(runtime: runtime)
                     } else {
                         ContentUnavailableView(
                             selectedSection,
@@ -56,7 +58,7 @@ public struct AetherDashboardView: View {
                 statusCard("Screen Recording", value: runtime.screenRecordingGranted ? "Granted" : "Not granted", symbol: "lock.shield")
             }
             Text("Welcome to AETHER").font(.title2.bold())
-            Text("Bootstrap loads your versioned configuration. Window discovery (M1), capture and overlays (M2) are not connected yet.")
+            Text("Bootstrap loads your versioned configuration. Open Windows for live discovery and verified Accessibility control. Capture and overlays (M2) are not running.")
                 .foregroundStyle(.secondary)
             if let version = runtime.schemaVersion {
                 Text("Configuration schema: \(version)").font(.caption)
@@ -87,6 +89,7 @@ public struct AetherDashboardView: View {
     private func icon(for section: String) -> String {
         switch section {
         case "Overview": "square.grid.2x2"
+        case "Windows": "macwindow.on.rectangle"
         case "Effects": "sparkles"
         case "Animation Studio": "timeline.selection"
         case "Physics": "atom"
