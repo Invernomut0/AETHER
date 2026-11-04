@@ -20,7 +20,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "AETHERShared", exclude: ["README.md"]),
-        .target(name: "AETHERCore", dependencies: ["AETHERShared", "AETHERPersistence"], exclude: ["README.md"]),
+        .target(name: "AETHERCore", dependencies: ["AETHERShared", "AETHERPersistence", "AETHERWindowManager", "AETHERCapture", "AETHERRendering"], exclude: ["README.md"]),
         .target(name: "AETHERWindowManager", dependencies: ["AETHERShared"], exclude: ["README.md"]),
         .target(name: "AETHERCapture", dependencies: ["AETHERShared"], exclude: ["README.md"]),
         .target(name: "AETHERRendering", dependencies: ["AETHERShared"], exclude: ["README.md"], resources: [.process("Shaders")]),
@@ -32,6 +32,8 @@ let package = Package(
         .target(name: "AETHERIntelligence", dependencies: ["AETHERShared", "AETHERLayouts"], exclude: ["README.md"]),
         .target(name: "AETHERInterface", dependencies: ["AETHERShared", "AETHERCore", "AETHEREffects", "AETHERWindowManager"], exclude: ["README.md"]),
         .testTarget(name: "AETHERWindowManagerTests", dependencies: ["AETHERWindowManager", "AETHERShared"]),
+        .testTarget(name: "AETHERCaptureTests", dependencies: ["AETHERCapture", "AETHERWindowManager", "AETHERCore"]),
+        .testTarget(name: "AETHERRenderingTests", dependencies: ["AETHERRendering", "AETHERShared"]),
         .testTarget(name: "AETHERSharedTests", dependencies: ["AETHERShared"]),
         .testTarget(name: "AETHERCoreTests", dependencies: ["AETHERCore", "AETHERPersistence"]),
         .testTarget(name: "AETHERPersistenceTests", dependencies: ["AETHERPersistence"]),

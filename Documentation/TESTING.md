@@ -7,7 +7,7 @@ The configuration fixture is the repository's `Configuration/DefaultConfiguratio
 
 For startup smoke verification, launch both built apps, confirm AETHER reports M0 readiness and schema 1, and confirm no capture or permission request starts automatically. Press permission buttons only when you want to grant those capabilities. Ad-hoc signing may require regranting access after rebuilds.
 
-`bash Scripts/coverage.sh` aggregates all macOS test executables using the merged coverage profile. Do not rely on SwiftPM's `AETHER.json` alone on Xcode 27.2: its export can contain only the last suite. Reported coverage is not a claim that unimplemented capture/rendering paths have been tested.
+`bash Scripts/coverage.sh` aggregates all macOS test executables using the merged coverage profile. Do not rely on SwiftPM's `AETHER.json` alone on Xcode 27.2: its export can contain only the last suite. Reported coverage is not a claim that every consent-dependent capture path has been validated live.
 
 ## Test layers
 ### M1 native integration
@@ -18,6 +18,16 @@ On a local interactive Mac with Accessibility explicitly granted to the test hos
 The suite uses real external NSWindows, not self-process AX (which can deadlock MainActor), mock controllers or fabricated desktop datasets. It verifies distinct handles and generations, exact-target move/resize and restoration, focus readback, fixed-size rejection, equal-title/equal-frame ambiguity, forged handles, invalid geometry, pre-cancellation, disappearance and correlation from observed AX metadata. CG titles may be redacted without Screen Recording; overlap fixtures are located from their real AX geometry instead. A disposable fixture is closed; relaunch fixtures before repeating the entire opted-in suite. Other applications are never mutated.
 
 Geometry requires matching AX and CG frames across successive observations. Regression coverage includes moving before growth to avoid AppKit's display-edge clamp and waiting for WindowServer publication. Failed geometry transactions may be partial; the service invalidates the handle and requires refresh, rather than automatically overwriting newer user state.
+
+### M2 capture/overlay implementation coverage (first pass)
+M2 tests now include real capture-path and rendering-path checks, but Gate 0 is still pending explicit Screen Recording consent on the host where the full suite is run.
+
+- Capture component tests cover observed desktop request validation, privacy exclusions, passive denial when a registered handle is available, callback deadline/cancellation behavior and idle cleanup. Actual ScreenCaptureKit sample conversion, bounded stream delivery and active teardown remain consent-dependent, not covered by default tests.
+- Live ScreenCaptureKit tests are opt-in and require explicit enablement plus pre-granted host permissions. If explicitly enabled without grant, they fail by design rather than being treated as fake passes.
+- Real Metal tests use an actual `Terminal.app` icon `CGContext` BGRA upload plus a real `NSWindow`; they validate GPU command completion, visible non-activating panel behavior, input passthrough/focus invariants, and idempotent removal.
+- Default test mode continues to use real desktop descriptors and host permissions with conditional preconditions; "no eligible" output means coverage was not exercised in that environment.
+
+Final 1.0.4 default validation on the locked host passed 33 functions / 38 expanded cases, with 17 explicit skips out of 50 functions / 55 cases. The three read-only handle-boundary tests skip without AX trust, during secure input, or (for denial tests) when Recording is already granted. Final full interactive validation is blocked by the locked desktop and absent Recording consent; earlier M1-only success is not a full M2 gate. See `M2_VALIDATION.md` for exact coverage and failure/prerequisite evidence.
 
 ### Remaining layers
 - Unit: pure models, geometry, layout trees, physics, easing, serialization.
@@ -40,6 +50,13 @@ Additional fixture coverage is still required for later milestones:
 - multiple windows in one process
 - fullscreen test window (manual/controlled)
 
+Run `bash Scripts/test-capture-integration.sh` for the M2 live helper. It requires:
+- An unlocked desktop with secure input finished. Both integration scripts conservatively reject secure input before building; they never unlock the session or change TCC.
+- Test Lab not already running.
+- Accessibility and Screen Recording already granted to the test host.
+- App builds launched as fixtures.
+- `AETHER_RUN_CAPTURE_INTEGRATION=1` opt-in for capture pipeline live tests.
+
 ## Failure injection
 - Permission denied/revoked.
 - Capture stream stops.
@@ -59,3 +76,5 @@ Additional fixture coverage is still required for later milestones:
 - GPU resources are released.
 - Errors are typed and diagnosable.
 - No stale frame is presented after window identity changes.
+
+For M2 gate acceptance, assertions must also include a real consented capture frame path from ScreenCaptureKit to overlay presentation and removal.

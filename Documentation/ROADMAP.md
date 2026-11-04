@@ -2,7 +2,7 @@
 
 Durations are indicative estimates for one developer with coding-agent assistance, not guarantees.
 
-Local progress (1.0.3): M0 and the conservative M1 Test Lab gate have passed. M2 is next; Living Window remains unproven until capture, overlay and reliable teardown are integrated. See `M1_VALIDATION.md` for evidence and platform review limitations.
+Local progress (1.0.4 build 5): M0 and the conservative M1 Test Lab gate have passed. M2 is in progress with a first implementation slice integrated, but its capture/overlay exit gate remains unaccepted. Latest local host state was `AX=true`, `Recording=false` with the desktop locked, so live ScreenCaptureKit validation is pending. M3 waits for that M2 exit gate; M3 animation subsequently completes the broader Living Window Gate 0.
 
 | Milestone | Focus | Estimate | Exit gate |
 |---|---|---:|---|
@@ -29,6 +29,11 @@ This is the highest-risk technical proof:
 
 Do not scale up the effect catalog until this gate is reliable.
 
+Current Gate 0 status:
+- Implementation code exists for capture, bounded frame flow, preview orchestration and overlay teardown.
+- Explicit consent-based runtime proof is still missing on the latest host because Screen Recording was not granted.
+- Physical multi-display Spaces/full-screen behavior and crash/recovery evidence are still pending manual validation.
+
 ## Parallelizable work
 - Shared models, documentation, persistence schema and Test Lab can proceed alongside M1.
 - Effect shader prototypes can be developed against synthetic textures before native capture is complete.
@@ -36,3 +41,5 @@ Do not scale up the effect catalog until this gate is reliable.
 
 ## Release gate
 No release if an overlay can remain orphaned, if permission denial breaks the app, if native window state is not reconciled, or if core functionality depends on undocumented/private APIs.
+
+No M3 progression while the M2 capture/overlay exit gate remains pending. Completing the broader Living Window Gate 0 also requires M3's animation proof; neither gate implies release certification.

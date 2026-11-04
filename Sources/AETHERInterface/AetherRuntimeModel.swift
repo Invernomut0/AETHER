@@ -17,11 +17,17 @@ public final class AetherRuntimeModel {
     private let coordinator = AetherCoordinator()
     private let permissions = PermissionCoordinator()
     private let windowService = NativeWindowService()
+    private var previewCoordinator: WindowPreviewCoordinator?
     public private(set) var windows: [WindowDescriptor] = []
     public private(set) var isWindowOperationRunning = false
+    public private(set) var isPreviewRunning = false
     public private(set) var windowMessage: String?
 
-    public init() {}
+    public init() {
+        previewCoordinator = WindowPreviewCoordinator(windows: windowService)
+    }
+
+    func removePreviewOverlay() { previewCoordinator?.removeOverlay() }
 
     public func start() async {
         guard !isStarting, !isRunning else { return }
@@ -62,17 +68,26 @@ public final class AetherRuntimeModel {
         guard !isWindowOperationRunning else { return }
         isWindowOperationRunning = true
         windowMessage = nil
-        defer { isWindowOperationRunning = false }
+        defer { isWindowOperationRunning = false; isPreviewRunning = false }
         do {
             await refreshPermissions()
             switch command {
             case .refresh: break
             case .focus(let handle): try await windowService.activate(handle)
             case .setFrame(let handle, let frame): try await windowService.setFrame(frame.cgRect, for: handle)
+            case .preview(let handle):
+                guard let configuration = await coordinator.currentConfiguration(), let previewCoordinator else {
+                    throw AetherError.invalidState("Start AETHER successfully before requesting capture")
+                }
+                isPreviewRunning = true
+                let report = try await previewCoordinator.preview(handle, configuration: configuration)
+                windowMessage = "Preview: \(report.framesPresented) GPU-completed frames · overlay removed: \(report.overlayRemoved) · native frame unchanged: \(report.nativeFrameUnchanged)"
             }
             windows = try await windowService.refresh()
             let resolved = windows.filter { $0.runtimeHandle != nil }.count
-            windowMessage = "\(windows.count) native windows · \(resolved) safely correlated · \(windows.count - resolved) read-only"
+            if windowMessage == nil {
+                windowMessage = "\(windows.count) native windows · \(resolved) safely correlated · \(windows.count - resolved) read-only"
+            }
         } catch is CancellationError {
             windows = []
             windowMessage = "Operation cancelled. Refresh to reconcile native window state."

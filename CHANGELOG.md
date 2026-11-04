@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.4 — M2 first implementation, gate pending (2026-11-04)
+- Integrate the first Living Window capture/overlay implementation slice without promoting it to gate acceptance.
+- Add ScreenCaptureKit output-path ownership with serial callback processing and immutable BGRA frame copies.
+- Configure bounded capture flow for preview transactions (queue depth 3, newest-only async delivery, capped frame size, 30fps baseline for this slice).
+- Add privacy/permission enforcement in the capture path (secure-input checks, known credential-family exclusions, user exclusions from configuration).
+- Add preview lifecycle safeguards: strict deadlines, stale-frame rejection, periodic permission/identity revalidation and cleanup retries.
+- Add Metal overlay presentation lifecycle hardening (non-activating/non-interactive panel, serialized GPU work, idempotent remove).
+- Expand M2 test coverage with capture and Metal suites, including opt-in live ScreenCaptureKit tests that require pre-granted consent.
+- Fail live script preflight safely on secure input/locked sessions; retain read-only behavior when AX exposes non-window proxies. Default build/test validation passes, while interactive gates remain explicitly pending.
+- Increment app version to 1.0.4 (build 5).
+- Keep the M2 capture/overlay exit gate unaccepted: latest host state remained `AX=true`, `Recording=false`, so live ScreenCaptureKit output-path runtime validation is still pending. M3 animation will subsequently complete the broader Living Window Gate 0.
+
 ## 1.0.3 — M1 native window intelligence (2026-11-04)
 - Replace first-AX-window control with mutually unique public-API correlation and session-scoped generations.
 - Enumerate normal-layer CG windows, enrich live application/display metadata, probe AX capabilities and invalidate disappeared or ambiguous targets.

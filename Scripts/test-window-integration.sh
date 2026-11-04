@@ -3,6 +3,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Opt-in only: mutates Test Lab fixtures, never grants permissions or touches other apps.
+if swift -e 'import ApplicationServices; import Carbon; import Darwin; exit(AXIsProcessTrusted() && !IsSecureEventInputEnabled() ? 0 : 2)'; then
+    :
+else
+    echo "Unlock the desktop, finish secure input and explicitly grant Accessibility to this test host. No fixture mutation started."
+    exit 2
+fi
 if pgrep -x 'AETHER Test Lab' >/dev/null; then
     echo "Quit Test Lab before running this script so fixture identities are unique."
     exit 2

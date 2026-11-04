@@ -81,6 +81,20 @@ actor WindowAccessibilitySession {
         }
     }
 
+    func validatedWindow(_ handle: RuntimeWindowHandle, process: WindowProcessSnapshot) throws -> WindowDescriptor {
+        let candidate = try resolve(handle, process: process, deadline: clock.now.advanced(by: .seconds(2)))
+        guard let native = try nativeWindows(processes: [process]).first(where: { $0.id == handle.windowID }) else {
+            throw AetherError.notFound("The selected native window disappeared")
+        }
+        return WindowDescriptor(
+            id: native.id, processID: native.processID, bundleIdentifier: process.bundleIdentifier,
+            applicationName: process.name, title: candidate.metadata.title ?? native.title,
+            frame: native.frame, displayID: native.displayID, isOnScreen: native.isOnScreen,
+            isMinimized: candidate.metadata.isMinimized, capabilities: candidate.metadata.capabilities,
+            runtimeHandle: handle
+        )
+    }
+
     func setFrame(_ frame: CGRect, for handle: RuntimeWindowHandle, process: WindowProcessSnapshot) async throws {
         guard WindowGeometry.isValid(frame) else {
             throw AetherError.invalidState("Window geometry must be finite with positive dimensions")

@@ -7,6 +7,7 @@ enum WindowPanelCommand {
     case refresh
     case focus(RuntimeWindowHandle)
     case setFrame(RuntimeWindowHandle, CodableRect)
+    case preview(RuntimeWindowHandle)
 }
 
 /// Native instrument-panel styling: compact capability labels and explicit, guarded commands.
@@ -27,15 +28,29 @@ struct NativeWindowsPanel: View {
                 Spacer()
                 Button("Refresh", systemImage: "arrow.clockwise") { submit(.refresh) }
                     .disabled(runtime.isWindowOperationRunning)
+                if runtime.isPreviewRunning {
+                    Button("Stop preview", systemImage: "stop.fill") {
+                        runtime.removePreviewOverlay()
+                        submit(.refresh)
+                    }
+                    .keyboardShortcut(.cancelAction)
+                }
             }
-            Text("Accessibility enables control without Screen Recording. Ambiguous or unsupported windows remain read-only; capture and effects are not running.")
+            Text("Native control needs Accessibility only. Preview captures just the selected window for up to five seconds and requires explicit Screen Recording consent. It never replaces, hides or moves the original. Moving or resizing ends the preview.")
                 .font(.callout).foregroundStyle(.secondary)
+            if !runtime.screenRecordingGranted {
+                Label("Preview unavailable: grant Screen Recording in Overview, then restart if macOS requests it.", systemImage: "lock.shield")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             HStack {
                 TextField("Filter application or window title", text: $search)
                     .textFieldStyle(.roundedBorder)
                 Toggle("Include read-only", isOn: $showReadOnly).toggleStyle(.checkbox)
             }
-            if runtime.isWindowOperationRunning { ProgressView("Checking native window state…").controlSize(.small) }
+            if runtime.isWindowOperationRunning {
+                ProgressView(runtime.isPreviewRunning ? "Selected-window capture · maximum 5 seconds…" : "Checking native window state…")
+                    .controlSize(.small)
+            }
             if let message = runtime.windowMessage {
                 Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                     .accessibilityAddTraits(.updatesFrequently)
@@ -52,6 +67,7 @@ struct NativeWindowsPanel: View {
             }
         }
         .task(id: requestID) { await runtime.performWindowCommand(command) }
+        .onDisappear { runtime.removePreviewOverlay() }
     }
 
     private var filteredWindows: [WindowDescriptor] {
@@ -80,6 +96,9 @@ struct NativeWindowsPanel: View {
                 if window.isMinimized { Text("Minimized").font(.caption) }
                 if !window.isOnScreen { Text("Off-screen").font(.caption) }
                 Spacer()
+                Button("Preview 5s") { if let handle = window.runtimeHandle { submit(.preview(handle)) } }
+                    .disabled(window.runtimeHandle == nil || !runtime.screenRecordingGranted || !window.isOnScreen || window.isMinimized)
+                    .help("Capture this window on demand; excluded applications are rejected before capture")
                 Button("Focus") { if let handle = window.runtimeHandle { submit(.focus(handle)) } }
                     .disabled(window.runtimeHandle == nil || !window.capabilities.canFocus)
                 Button("Center") { position(window, half: false) }

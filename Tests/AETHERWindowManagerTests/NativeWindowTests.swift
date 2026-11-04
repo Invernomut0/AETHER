@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import AppKit
 import ApplicationServices
+import Carbon
 @testable import AETHERWindowManager
 import AETHERShared
 
@@ -279,6 +280,8 @@ struct NativeWindowTests {
     }
 
     private func requireFixtureDescriptors(using service: NativeWindowService) async throws -> [WindowDescriptor] {
+        try #require(!IsSecureEventInputEnabled(),
+                     "Unlock the desktop and finish secure input before running live fixture tests")
         try #require(AXIsProcessTrusted(),
                          "Accessibility permission is required for live window integration tests")
         _ = try #require(

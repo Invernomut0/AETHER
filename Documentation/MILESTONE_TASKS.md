@@ -4,7 +4,7 @@
 - [x] Verify Package.swift and all targets build on the local Mac.
 - [x] Add CI build/test workflow (remote execution pending).
 - [x] Add structured logging categories.
-- [x] Add app bootstrap lifecycle and dependency composition root (M1 connected; M2 remains disconnected).
+- [x] Add app bootstrap lifecycle and dependency composition root (M1 native controls and M2 explicit preview connected).
 - [x] Add configuration loading and default migration.
 
 ## M1 Window Intelligence
@@ -18,13 +18,14 @@
 Local gate evidence and remaining manual platform checks: `M1_VALIDATION.md`. Checked does not imply universal AX support or release certification.
 
 ## M2 Capture & Overlay
-- [ ] Implement SCStreamOutput.
-- [ ] Convert CMSampleBuffer pixel buffers into GPU textures safely.
-- [ ] Add bounded async frame channel.
-- [ ] Implement stream lifecycle and error handling.
-- [ ] Implement transparent per-display overlay.
-- [ ] Verify z-order, Spaces and full-screen behavior.
-- [ ] Implement idempotent teardown and crash recovery.
+- [x] Implement SCStreamOutput callback path (implementation-only; live consent-host validation pending).
+- [x] Convert callback sample buffers into immutable BGRA frame data on the capture owner queue.
+- [x] Add bounded async frame flow (stream queue depth 3, newest-only async buffering 1).
+- [x] Implement stream lifecycle and error handling (single queue lease, start deadline 5s, stop deadline 3s).
+- [x] Implement transparent overlay transaction for the selected display (not one panel per screen by default).
+- [ ] Verify z-order, Spaces and full-screen behavior on physical displays.
+- [ ] Verify idempotent teardown and crash recovery under late callbacks and unexpected process termination.
+- [ ] Validate live ScreenCaptureKit output end-to-end with explicit Screen Recording consent on the test host.
 
 ## M3 Motion
 - [ ] Implement monotonic timeline clock.

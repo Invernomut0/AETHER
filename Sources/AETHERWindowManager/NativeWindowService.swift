@@ -22,6 +22,11 @@ public final class NativeWindowService: WindowDiscovering, WindowControlling {
         try await session.refresh(processes: processes())
     }
 
+    /// Read-only revalidation of a registered generation, including current AX/CG correlation.
+    public func validatedWindow(_ handle: RuntimeWindowHandle) async throws -> WindowDescriptor {
+        try await session.validatedWindow(handle, process: process(handle.processID))
+    }
+
     public func setFrame(_ frame: CGRect, for window: RuntimeWindowHandle) async throws {
         try Task.checkCancellation()
         try beginOperation(window.windowID)

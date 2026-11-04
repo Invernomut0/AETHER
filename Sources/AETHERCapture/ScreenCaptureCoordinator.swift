@@ -1,42 +1,71 @@
 import Foundation
-import ScreenCaptureKit
-import CoreMedia
+import CoreGraphics
+import Carbon
+import OSLog
 import AETHERShared
 
-@available(macOS 14.0, *)
+/// On-demand single-session owner. ScreenCaptureKit objects live only on the lease's serial queue.
 public actor ScreenCaptureCoordinator: WindowCapturing {
-    private var streams: [CaptureSessionID: SCStream] = [:]
+    private var sessions: [CaptureSessionID: CaptureStreamLease] = [:]
+    private let log = Logger(subsystem: "com.aether.desktop", category: "capture")
 
     public init() {}
 
+    /// ID-only capture is deliberately rejected: a recycled CGWindowID is not identity.
     public func startCapture(windowID: WindowID) async throws -> CaptureSessionID {
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-        guard let window = content.windows.first(where: { $0.windowID == windowID.rawValue }) else {
-            throw AetherError.notFound("ScreenCaptureKit window not found")
+        throw AetherError.unsupported("Use a validated runtime handle through CaptureRequest, not a window ID alone")
+    }
+
+    public func startCapture(request: CaptureRequest) async throws -> CaptureSessionID {
+        try Task.checkCancellation()
+        guard CapturePrivacyPolicy.allows(bundleIdentifier: request.bundleIdentifier,
+                                          excludedBundleIDs: request.excludedBundleIDs),
+              !IsSecureEventInputEnabled() else {
+            throw AetherError.permissionDenied("Capture blocked by application exclusion or secure input")
         }
+        guard CGPreflightScreenCaptureAccess() else {
+            throw AetherError.permissionDenied("Screen Recording must be granted explicitly in System Settings; restart if requested")
+        }
+        guard sessions.isEmpty else { throw AetherError.invalidState("Another capture session is still owned") }
+        let id = CaptureSessionID()
+        let lease = CaptureStreamLease(id: id)
+        sessions[id] = lease
+        do {
+            try await lease.start(request: request)
+            try Task.checkCancellation()
+            log.info("Selected-window capture started")
+            return id
+        } catch {
+            do { try await lease.stop() }
+            catch { throw AetherError.operationFailed("Capture startup cleanup unconfirmed; retry Stop before another capture: \(error)") }
+            sessions.removeValue(forKey: id)
+            throw error
+        }
+    }
 
-        let filter = SCContentFilter(desktopIndependentWindow: window)
-        let configuration = SCStreamConfiguration()
-        configuration.width = max(1, Int(window.frame.width * 2))
-        configuration.height = max(1, Int(window.frame.height * 2))
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
-        configuration.queueDepth = 3
-        let stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
+    public func frames(sessionID: CaptureSessionID) throws -> AsyncThrowingStream<CapturedFrame, any Error> {
+        guard let lease = sessions[sessionID] else { throw AetherError.notFound("Capture session not found") }
+        return lease.frames
+    }
 
-        // A production implementation must attach an SCStreamOutput, start the stream,
-        // publish CMSampleBuffer frames through a bounded async channel and own teardown.
-        // This foundation intentionally does not report capture as active until that
-        // output/stream lifecycle is implemented and tested.
-        _ = stream
-        throw AetherError.unsupported("Capture output pipeline is not implemented yet. Complete M2 before enabling this feature.")
+    public func stopCaptureReportingErrors(sessionID: CaptureSessionID) async throws {
+        guard let lease = sessions[sessionID] else { return }
+        try await lease.stop()
+        sessions.removeValue(forKey: sessionID)
+        log.info("Selected-window capture stopped")
+    }
+
+    /// Retry cleanup after a timeout; no new session can start until all leases confirm stop.
+    public func stopAllCaptures() async throws {
+        for id in Array(sessions.keys) { try await stopCaptureReportingErrors(sessionID: id) }
     }
 
     public func stopCapture(sessionID: CaptureSessionID) async {
-        guard let stream = streams.removeValue(forKey: sessionID) else { return }
-        try? await stream.stopCapture()
+        do { try await stopCaptureReportingErrors(sessionID: sessionID) }
+        catch { log.error("Capture stop failed: \(String(describing: error), privacy: .public)") }
     }
 
-    public func isCapturing(sessionID: CaptureSessionID) async -> Bool {
-        streams[sessionID] != nil
+    public func isCapturing(sessionID: CaptureSessionID) -> Bool {
+        sessions[sessionID]?.isActive ?? false
     }
 }

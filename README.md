@@ -1,11 +1,11 @@
-# AETHER 1.0.3
+# AETHER 1.0.4 (build 5)
 ## The Desktop, in Motion.
 
 AETHER is a native macOS window-management and visual-effects system built with Swift, AppKit, SwiftUI, ScreenCaptureKit and Metal.
 
 **Product direction:** hybrid native-window control + temporary Metal overlays; effects-first; public APIs as the stable baseline; advanced integrations isolated behind optional adapters.
 
-> Engineering status: M0 bootstrap and the M1 native window-control slice are implemented and locally tested on macOS with real Test Lab windows. M2 and the Living Window capture/overlay gate remain incomplete. No private API behavior is assumed to work, and catalog descriptors are not shipped effects.
+> Engineering status: M0 and M1 were accepted locally. M2 first implementation is integrated in 1.0.4, but the Living Window Gate 0 is **not accepted yet**. On the latest host run, Accessibility was granted and Screen Recording was not (`AX=true`, `Recording=false`), so the live ScreenCaptureKit output path has not been runtime-validated on that host yet. No private API behavior is assumed to work, and catalog descriptors are not shipped effects.
 
 ## Open in Xcode
 
@@ -17,9 +17,13 @@ AETHER is a native macOS window-management and visual-effects system built with 
 
 `swift build` / `swift test` validate library targets and tests; they do not build the application entry points. `bash Scripts/build-apps.sh` builds locally ad-hoc-signed bundles. Distribution signing/notarization is not implemented by that script.
 
+Default validation does not auto-run opted-in live mutation gates (M1 fixtures and ScreenCaptureKit consent-dependent capture tests).
+
+Latest local 1.0.4 validation: package and both app builds passed; 33 test functions / 38 expanded cases executed, 17 explicitly skipped on a locked desktop. GPU tests verify real Metal submissions, not physical scanout. Interactive gates require an unlocked desktop, secure input finished and explicit permissions; neither script unlocks the session or grants access.
+
 ## Current bootstrap and permissions
 
-The dashboard reports live bootstrap readiness, configuration schema, Accessibility and Screen Recording status. Startup does not request permissions or start a capture. Use the explicit request buttons to grant capabilities; refresh after changing System Settings, or relaunch if required by macOS.
+The dashboard reports live bootstrap readiness, configuration schema, Accessibility and Screen Recording status. Startup does not request permissions or start a capture. Use explicit request buttons to grant capabilities; refresh after changing System Settings, or relaunch if required by macOS.
 
 Configuration is stored at `~/Library/Application Support/AETHER/configuration.json`. Missing files are initialized from schema 1 defaults. Unversioned/schema 0 configurations migrate while retaining recognized settings. Malformed files and future schemas produce a visible startup error without resetting user data; repair the file and retry. Unified logs use subsystem `com.aether.desktop` with `lifecycle`, `configuration`, `permissions` and `windows` categories, excluding window titles and captured content.
 
@@ -31,11 +35,36 @@ Correlation uses PID, global point geometry and titles only when available, with
 
 For live integration, quit any running Test Lab instance, then run `bash Scripts/test-window-integration.sh`. This builds the apps, launches real resizable/fixed/overlapping fixtures and explicitly enables tests that move, resize, focus and close **only those fixtures**. It never grants permissions. Ordinary CI skips mutation tests; a skip is not a passed integration gate. See `Documentation/M1_VALIDATION.md` for evidence and outstanding manual checks.
 
+## M2 implementation snapshot (not gate-certified)
+
+The first capture/overlay vertical slice is now present, but certification is still pending explicit consent-based runtime validation.
+
+After explicitly granting Screen Recording, open **Windows → Preview 5s**. **Stop preview**, Escape or leaving the panel cancels the transaction. Startup never starts capture; the original window remains interactive and authoritative. Add excluded bundle IDs to `captureExcludedBundleIDs` in the configuration file and restart after edits; set `effectsEnabled` to false to disable preview startup. Known credential-family exclusions are not an exhaustive detector of protected content.
+
+To validate only controlled Test Lab capture, quit Test Lab and run `bash Scripts/test-capture-integration.sh`. The script requires already-granted Accessibility and Screen Recording and never requests or alters permissions.
+
+- Capture callback path implemented with immutable BGRA `Data` copied on a serial capture-owner queue.
+- `SCStreamConfiguration` currently targets bounded throughput: queue depth `3`, newest-only async buffering (`1`), max `1600` px per edge, `30fps`, no audio/cursor/shadows.
+- Privacy controls include built-in credential-family exclusions plus user-defined `configuration.captureExcludedBundleIDs`; secure-input and permission checks are enforced.
+- Capture session ownership is single-lease actor-driven with start deadline `5s` and stop deadline `3s`; failed stop retains the lease and the next preview retries cleanup before opening a new stream.
+- ID-only capture start is rejected; callers must pass a validated `RuntimeWindowHandle` and revalidate through `NativeWindowService.validatedWindow` before/after capture start.
+- Core preview orchestration limits runtime to 5 seconds, requires first complete frame within 2 seconds, drops stale handoff older than 1 second, monitors permission/secure-input every 100ms, and revalidates identity/frame every 500ms with bounded AX latency.
+- Overlay presentation uses a non-activating, non-interactive AppKit panel ordered relative to the native window; drawable size is bounded to `3200` px per edge.
+- GPU submission is serialized to one in-flight command; completion uses a 750ms timeout while retaining resources until real command completion; remove is immediate and idempotent.
+
+Current known limitations (still blocking M2 gate acceptance):
+
+- No live ScreenCaptureKit output-path validation has been completed on a host with Screen Recording consent granted.
+- `framesPresented` currently counts GPU command completion, not verified on-screen presentation.
+- Texture-memory diagnostics are estimated (`allocatedTextureBytes`) and do not represent total GPU allocation.
+- Preview is diagnostic, not an M3 animation; the original window remains visible and authoritative.
+- Physical multi-display Spaces/full-screen behavior and crash-recovery guarantees remain manual validation items.
+
 Screen Recording remains part of the approved main visual-effects path. Native move/resize can use Accessibility without capture, but deforming another app's captured content requires authorization. [Wobbly](https://github.com/jsgrrchg/Wobbly) uses the same capture-plus-Metal principle and also requires Screen Recording. It is GPL-3.0-or-later: it is a reference, not a source dependency. AeroSpace is a useful tiling reference but documents a private AX-to-window-ID API, which is not an approved stable dependency for AETHER. No permission bypass is proposed.
 
 See `TODO.md`, `IMPLEMENTATION_STATUS.md` and `Documentation/MILESTONE_TASKS.md` for the actual milestone boundary. The owner-provided source repository is [Invernomut0/AETHER](https://github.com/Invernomut0/AETHER), tracked as `origin` on branch `main`. Remote CI results must be checked separately from local validation.
 
-Local validation evidence and remaining manual checks are recorded in `Documentation/M0_VALIDATION.md` and `Documentation/M1_VALIDATION.md`.
+Local validation evidence and remaining manual checks are recorded in `Documentation/M0_VALIDATION.md`, `Documentation/M1_VALIDATION.md`, and `Documentation/M2_VALIDATION.md` (gate pending).
 
 The package manifest targets macOS 14.0 and Apple Silicon as the primary architecture. Some advanced APIs and behaviors are availability-gated and must be checked against the SDK installed on the build machine.
 
@@ -69,6 +98,8 @@ Do not build the full effects catalog before validating this pipeline on a real 
 5. Animate the captured representation.
 6. End the overlay and reconcile the original native window.
 7. Verify that focus, visibility and input remain correct.
+
+M3 starts only after the **M2 capture/overlay exit gate** proves a fresh consented frame and reliable removal. M3 then supplies the animation needed to complete the broader Living Window Gate 0; the full effects catalog must wait for that complete gate.
 
 Native window lifecycle interception is not generally available to third-party macOS applications. AETHER must not claim it can replace every system open/close/minimize animation. Trigger effects from AETHER-controlled actions, supported observations, and explicitly configured workflows; provide native fallbacks otherwise.
 
