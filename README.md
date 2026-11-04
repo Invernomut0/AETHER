@@ -1,4 +1,4 @@
-# AETHER 1.0.5 (build 6)
+# AETHER 1.0.6 (build 7)
 ## The Desktop, in Motion.
 
 AETHER is a native macOS window-management and visual-effects system built with Swift, AppKit, SwiftUI, ScreenCaptureKit and Metal.
@@ -21,7 +21,9 @@ Default validation does not auto-run opted-in live mutation gates (M1 fixtures a
 
 Latest consented capture validation: three consecutive suites passed with 12 functions executed and two permission-denial functions inapplicable because Recording was granted; the separate native suite passed all 14 tests. The initial capture suite failed a focus assertion when macOS UserNotificationCenter became frontmost; no assertion or engine code was changed before the successful repetitions. GPU tests verify real Metal submissions, not physical scanout. Interactive gates require an unlocked desktop, secure input finished and explicit permissions; neither script unlocks the session or grants access.
 
-Final 1.0.5 default validation passed Swift/both app builds and 34 test functions / 39 cases, with 16 explicit skips. A separate live coverage rerun also passed (12 executed, two denial tests skipped); see `Documentation/M2_VALIDATION.md` for measured coverage and all failed attempts/prerequisites.
+Version 1.0.6 adds live movement, minimization and closure/recovery cases. They wait for a real GPU-completed frame and reuse the same preview coordinator after interruption. Target closure exposed an already-stopped ScreenCaptureKit cleanup error; the fix recognizes only Apple's exact error domain/code, never arbitrary stop failures. See `Documentation/M2_VALIDATION.md` for validation results and retained failed attempts.
+
+Final 1.0.6 validation passes Swift and both app builds, default tests (34 functions / 39 cases, 17 skips), four post-fix capture suites (13 functions / 15 cases, two denial skips each) and separate native regression 14/14. Final live line coverage: capture lease 93.56%, preview coordinator 93.39%; untested failure branches and physical platform checks remain explicit.
 
 ## Current bootstrap and permissions
 
@@ -43,12 +45,12 @@ The capture/overlay vertical slice has passed local consent-based runtime valida
 
 After explicitly granting Screen Recording, open **Windows → Preview 5s**. **Stop preview**, Escape or leaving the panel cancels the transaction. Startup never starts capture; the original window remains interactive and authoritative. Add excluded bundle IDs to `captureExcludedBundleIDs` in the configuration file and restart after edits; set `effectsEnabled` to false to disable preview startup. Known credential-family exclusions are not an exhaustive detector of protected content.
 
-To validate only controlled Test Lab capture, quit Test Lab and run `bash Scripts/test-capture-integration.sh`. The script requires already-granted Accessibility and Screen Recording and never requests or alters permissions.
+To validate only controlled Test Lab capture, quit Test Lab and run `bash Scripts/test-capture-integration.sh`. The script requires already-granted Accessibility and Screen Recording and never requests or alters permissions. The suite moves/restores and minimizes/restores fixture A, and closes a separate **M2 Fixture Capture Disposable**. Relaunch Test Lab before repeating the entire live suite; M1's disposable is independent. Never run native mutations and capture tests concurrently.
 
 - Capture callback path implemented with immutable BGRA `Data` copied on a serial capture-owner queue.
 - `SCStreamConfiguration` currently targets bounded throughput: queue depth `3`, newest-only async buffering (`1`), max `1600` px per edge, `30fps`, no audio/cursor/shadows.
 - Privacy controls include built-in credential-family exclusions plus user-defined `configuration.captureExcludedBundleIDs`; secure-input and permission checks are enforced.
-- Capture session ownership is single-lease actor-driven with start deadline `5s` and stop deadline `3s`; failed stop retains the lease and the next preview retries cleanup before opening a new stream.
+- Capture session ownership is single-lease actor-driven with start deadline `5s` and stop deadline `3s`; failed stop retains the lease and the next preview retries cleanup before opening a new stream. The exact SCK `attemptToStopStreamState` result confirms an already-stopped/nonexistent stream only when startup is no longer pending; output removal is still required and errors remain visible.
 - ID-only capture start is rejected; callers must pass a validated `RuntimeWindowHandle` and revalidate through `NativeWindowService.validatedWindow` before/after capture start.
 - Core preview orchestration limits runtime to 5 seconds, requires first complete frame within 2 seconds, drops stale handoff older than 1 second, monitors permission/secure-input every 100ms, and revalidates identity/frame every 500ms with bounded AX latency.
 - Overlay presentation uses a non-activating, non-interactive AppKit panel ordered relative to the native window; drawable size is bounded to `3200` px per edge.
@@ -56,7 +58,7 @@ To validate only controlled Test Lab capture, quit Test Lab and run `bash Script
 
 Current known limitations (still blocking M2 gate acceptance):
 
-- Consented tests validate fresh ScreenCaptureKit frames reaching Metal, configured exclusions, cancellation and removal; they do not certify every lifecycle/failure path.
+- Consented tests validate fresh ScreenCaptureKit frames reaching Metal, configured exclusions, cancellation, target move/minimize/close and same-coordinator recovery; they do not certify every lifecycle/failure path.
 - `framesPresented` currently counts GPU command completion, not verified on-screen presentation.
 - Texture-memory diagnostics are estimated (`allocatedTextureBytes`) and do not represent total GPU allocation.
 - Preview is diagnostic, not an M3 animation; the original window remains visible and authoritative.

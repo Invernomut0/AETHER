@@ -131,9 +131,20 @@ final class CaptureStreamLease: NSObject, SCStreamOutput, SCStreamDelegate, @unc
         stopPending = true
         stream.stopCapture { error in
             let failure = error.map { AetherError.operationFailed("Stream stop: \($0.localizedDescription)") }
+            // Apple defines this exact domain/code as already stopped or nonexistent. A closed
+            // capture target can stop SCK before our request. No string matching or blanket ignore.
+            let alreadyStopped = error.map { error in
+                let error = error as NSError
+                return error.domain == SCStreamErrorDomain
+                    && error.code == SCStreamError.Code.attemptToStopStreamState.rawValue
+            } ?? false
             self.queue.async {
                 self.stopPending = false
-                if let failure { self.finishStop(failure); return }
+                // Never release while a late startup could still make the stream active.
+                if let failure, !(alreadyStopped && !self.startPending) {
+                    self.finishStop(failure)
+                    return
+                }
                 // A late start completion issues stop again before releasing the stream.
                 if !self.startPending {
                     var removalFailure: AetherError?

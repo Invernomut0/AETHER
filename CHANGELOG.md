@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.6 — M2 target interruption and recovery (2026-11-04)
+- Add opt-in real-window movement, minimization and closure scenarios after the first GPU-completed captured frame; verify overlay removal, preserved native action and another preview using the same coordinator.
+- Add an independent M2 disposable Test Lab window; restore non-disposable fixtures and require a fresh Test Lab before repeating the suite.
+- Reproduce closure cleanup failing because SCK had already stopped. Accept only `SCStreamErrorDomain` / `attemptToStopStreamState` when startup is no longer pending, then remove output normally; retain ownership for all other unconfirmed stops.
+- Pass default validation/both app builds, four post-fix capture suites (13 functions / 15 cases, two denial skips each) and native regression 14/14; record the real failure baseline and final coherent live coverage (lease 93.56%, preview 93.39% lines).
+- Bump both app bundles to 1.0.6 (build 7). Full M2 physical/platform acceptance and M3 animation remain pending.
+
 ## 1.0.5 — Consented M2 live evidence (2026-11-04)
 - Record three consecutive successful capture suites with pre-granted Accessibility/Recording and secure input off: 12 functions executed, two denial tests inapplicable per run.
 - Verify real ScreenCaptureKit frames reach Metal, overlays are removed, exclusions reject capture and cancellation preserves native geometry; separate M1 regression passes 14/14.

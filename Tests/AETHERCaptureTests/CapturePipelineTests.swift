@@ -296,6 +296,148 @@ struct CapturePipelineTests {
         }
     }
 
+    @Test("Native target interruption removes the overlay and permits coordinator reuse",
+          .enabled(if: runCaptureIntegration), arguments: CaptureInterruption.allCases)
+    func liveTargetInterruptionAndRecovery(_ interruption: CaptureInterruption) async throws {
+        try #require(CGPreflightScreenCaptureAccess(), "Grant Recording explicitly before opting in")
+        try #require(AXIsProcessTrusted(), "Grant Accessibility explicitly before opting in")
+        let service = NativeWindowService()
+        let title = interruption == .close ? "M2 Fixture Capture Disposable" : Self.fixtureTitles[0]
+        let fixture = try await requireFixtureDescriptor(using: service, title: title)
+        let handle = try #require(fixture.runtimeHandle)
+        let original = try #require(fixture.frame?.cgRect)
+        // This reference never leaves MainActor and cannot retarget another AX object on PID reuse.
+        let element = try fixtureAXWindow(fixture)
+        let preview = WindowPreviewCoordinator(windows: service)
+        let task = Task { try await preview.preview(handle, configuration: .default) }
+        var mutationAttempted = false
+        var operationError: (any Error)?
+        do {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(8))
+            while preview.framesPresented == 0 && ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            try #require(preview.framesPresented > 0, "No real capture frame reached Metal before mutation")
+            let started = ContinuousClock.now
+            mutationAttempted = true
+            let moved = original.offsetBy(dx: 32, dy: 24)
+            switch interruption {
+            case .move:
+                try await service.setFrame(moved, for: handle)
+            case .minimize:
+                try setFixtureMinimized(true, element: element)
+            case .close:
+                let buttonRef = try #require(try fixtureAXAttribute(element, kAXCloseButtonAttribute))
+                try #require(CFGetTypeID(buttonRef) == AXUIElementGetTypeID())
+                let button = unsafeDowncast(buttonRef, to: AXUIElement.self)
+                try #require(AXUIElementSetMessagingTimeout(button, 0.15) == .success)
+                try #require(AXUIElementPerformAction(button, kAXPressAction as CFString) == .success)
+            }
+
+            let result = await task.result
+            switch result {
+            case .success:
+                Issue.record("Preview completed normally after native target interruption")
+            case .failure(let error):
+                guard let error = error as? AetherError else { throw error }
+                switch error {
+                case .invalidState, .notFound:
+                    break // Native revalidation observed the changed/disappeared target.
+                case .operationFailed(let message) where interruption == .close && message.hasPrefix("Capture interrupted:"):
+                    break // SCK can report target closure before the periodic native validation.
+                default:
+                    throw error // In particular, never accept failed cleanup, timeout or cancellation.
+                }
+                print("M2 \(interruption.rawValue): observed \(error)")
+            }
+            #expect(ContinuousClock.now - started < .seconds(10))
+            #expect(!preview.isOverlayVisible)
+            switch interruption {
+            case .move:
+                let after = try #require(cgWindowFrame(windowID: fixture.id))
+                #expect(WindowGeometry.approximatelyEqual(after, moved))
+            case .minimize:
+                #expect((try fixtureAXAttribute(element, kAXMinimizedAttribute) as? NSNumber)?.boolValue == true)
+            case .close:
+                let disappearanceDeadline = ContinuousClock.now.advanced(by: .seconds(4))
+                while cgWindowFrame(windowID: fixture.id) != nil && ContinuousClock.now < disappearanceDeadline {
+                    try await Task.sleep(for: .milliseconds(40))
+                }
+                #expect(cgWindowFrame(windowID: fixture.id) == nil)
+            }
+
+            // Reuse the SAME capture owner and renderer while the native mutation is still in effect.
+            let recovery = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[1])
+            let recoveryHandle = try #require(recovery.runtimeHandle)
+            let report = try await preview.preview(recoveryHandle, configuration: .default, duration: .seconds(1))
+            #expect(report.framesPresented > 0)
+            #expect(report.overlayRemoved && report.nativeFrameUnchanged)
+            #expect(!preview.isOverlayVisible)
+        } catch { operationError = error }
+
+        task.cancel()
+        _ = await task.result
+        preview.removeOverlay()
+        // Restore only the controlled fixture; never roll back the mutation inside the engine.
+        if mutationAttempted && interruption != .close {
+            if interruption == .minimize { try setFixtureMinimized(false, element: element) }
+            let current = try await requireFixtureDescriptor(using: service, title: title)
+            try #require(current.id == fixture.id && current.processID == fixture.processID)
+            if interruption == .move {
+                try await service.setFrame(original, for: try #require(current.runtimeHandle))
+            }
+            let restored = try #require(cgWindowFrame(windowID: fixture.id))
+            #expect(WindowGeometry.approximatelyEqual(restored, original))
+        }
+        if let operationError { throw operationError }
+    }
+
+    /// Strictly local AX ownership: only a uniquely matched, correlated external Test Lab window.
+    private func fixtureAXWindow(_ fixture: WindowDescriptor) throws -> AXUIElement {
+        try #require(fixture.bundleIdentifier == Self.fixtureBundleIdentifier && fixture.runtimeHandle != nil)
+        let app = try #require(NSRunningApplication(processIdentifier: fixture.processID))
+        try #require(app.bundleIdentifier == Self.fixtureBundleIdentifier && !app.isTerminated)
+        let root = AXUIElementCreateApplication(fixture.processID)
+        try #require(AXUIElementSetMessagingTimeout(root, 0.15) == .success)
+        let elements = try #require(try fixtureAXAttribute(root, kAXWindowsAttribute) as? [AXUIElement])
+        try #require(elements.count <= 128)
+        let expected = try #require(fixture.frame?.cgRect)
+        var matches: [AXUIElement] = []
+        for element in elements {
+            try #require(AXUIElementSetMessagingTimeout(element, 0.15) == .success)
+            guard try fixtureAXAttribute(element, kAXRoleAttribute) as? String == kAXWindowRole,
+                  try fixtureAXAttribute(element, kAXTitleAttribute) as? String == fixture.title,
+                  let position = try fixtureAXAttribute(element, kAXPositionAttribute),
+                  let size = try fixtureAXAttribute(element, kAXSizeAttribute),
+                  CFGetTypeID(position) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID() else { continue }
+            let positionValue = unsafeDowncast(position, to: AXValue.self)
+            let sizeValue = unsafeDowncast(size, to: AXValue.self)
+            guard AXValueGetType(positionValue) == .cgPoint, AXValueGetType(sizeValue) == .cgSize else { continue }
+            var point = CGPoint.zero
+            var dimensions = CGSize.zero
+            guard AXValueGetValue(positionValue, .cgPoint, &point), AXValueGetValue(sizeValue, .cgSize, &dimensions),
+                  WindowGeometry.approximatelyEqual(CGRect(origin: point, size: dimensions), expected) else { continue }
+            matches.append(element)
+        }
+        try #require(matches.count == 1, "Fixture AX identity is absent or ambiguous")
+        return matches[0]
+    }
+
+    private func fixtureAXAttribute(_ element: AXUIElement, _ attribute: String) throws -> CFTypeRef? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+        try #require(result == .success, "Fixture AX read \(attribute) failed: \(result.rawValue)")
+        return value
+    }
+
+    private func setFixtureMinimized(_ minimized: Bool, element: AXUIElement) throws {
+        var settable = DarwinBoolean(false)
+        try #require(AXUIElementIsAttributeSettable(element, kAXMinimizedAttribute as CFString, &settable) == .success)
+        try #require(settable.boolValue)
+        try #require(AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString,
+                                                 minimized ? kCFBooleanTrue : kCFBooleanFalse) == .success)
+    }
+
     private func makeLiveCaptureRequest(using service: NativeWindowService) async throws -> CaptureRequest? {
         let descriptors = try await service.refresh()
         guard let descriptor = descriptors.first(where: { candidate in
@@ -310,7 +452,7 @@ struct CapturePipelineTests {
         return try CaptureRequest(window: descriptor, excludedBundleIDs: [])
     }
 
-    private func requireFixtureDescriptor(using service: NativeWindowService) async throws -> WindowDescriptor {
+    private func requireFixtureDescriptor(using service: NativeWindowService, title: String? = nil) async throws -> WindowDescriptor {
         try #require(!IsSecureEventInputEnabled(), "Unlock the desktop and finish secure input before live capture tests")
         _ = try #require(
             NSRunningApplication.runningApplications(withBundleIdentifier: Self.fixtureBundleIdentifier)
@@ -322,7 +464,7 @@ struct CapturePipelineTests {
         while true {
             let fixtures = try await service.refresh().filter { $0.bundleIdentifier == Self.fixtureBundleIdentifier }
             if let fixture = fixtures.first(where: { descriptor in
-                Self.fixtureTitles.contains(descriptor.title ?? "")
+                (title.map { $0 == descriptor.title } ?? Self.fixtureTitles.contains(descriptor.title ?? ""))
                 && descriptor.runtimeHandle != nil
                 && descriptor.frame != nil
                 && descriptor.isOnScreen
@@ -391,6 +533,10 @@ private enum ExpectedAetherError: String {
             return false
         }
     }
+}
+
+enum CaptureInterruption: String, CaseIterable, Sendable {
+    case move, minimize, close
 }
 
 private struct CapturePipelineAssertionError: Error, LocalizedError {

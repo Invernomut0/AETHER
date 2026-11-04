@@ -48,6 +48,7 @@ struct TestLabView: View {
             VStack(spacing: 6) {
                 Text("Launch with --m1-fixtures to spawn deterministic startup windows.")
                 Text("Expected titles: Resizable A/B/Disposable, Fixed, and two identical Overlap windows.")
+                Text("Includes a separate M2 disposable for capture interruption tests; relaunch before repeating the live suite.")
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -66,6 +67,7 @@ final class TestWindowController {
         static let resizableA = "M1 Fixture Resizable A"
         static let resizableB = "M1 Fixture Resizable B"
         static let resizableDisposable = "M1 Fixture Resizable Disposable"
+        static let captureDisposable = "M2 Fixture Capture Disposable"
         static let fixed = "M1 Fixture Fixed"
         static let overlap = "M1 Fixture Overlap"
     }
@@ -91,6 +93,7 @@ final class TestWindowController {
         openResizableFixture(title: Titles.resizableDisposable, frame: Frames.resizableDisposable)
         openFixedSizeFixture()
         openOverlappingFixtures()
+        openResizableFixture(title: Titles.captureDisposable, frame: Frames.resizableDisposable.offsetBy(dx: 24, dy: 24))
     }
 
     func openResizableFixture() {

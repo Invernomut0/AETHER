@@ -24,12 +24,15 @@ M2 tests include real capture-path and rendering-path checks. The consented loca
 
 - Capture component tests cover observed desktop request validation, privacy exclusions, passive denial when a registered handle is available, callback deadline/cancellation behavior and idle cleanup. Actual ScreenCaptureKit sample conversion, bounded stream delivery and active teardown remain consent-dependent, not covered by default tests.
 - Live ScreenCaptureKit tests are opt-in and require explicit enablement plus pre-granted host permissions. If explicitly enabled without grant, they fail by design rather than being treated as fake passes.
+- The parametrized target-interruption test waits for the first real GPU-completed frame, moves/minimizes/closes only a uniquely matched external Test Lab target, checks typed interruption and overlay removal, and runs another preview through the **same** coordinator while the mutation remains in effect. Cleanup failures/timeouts/cancellation do not count as expected interruption. Non-disposable fixture state is restored on success or error. Closure consumes a separate `M2 Fixture Capture Disposable`; relaunch Test Lab before repeating the complete capture suite.
 - Real Metal tests use an actual `Terminal.app` icon `CGContext` BGRA upload plus a real `NSWindow`; they validate GPU command completion, visible non-activating panel behavior, input passthrough/focus invariants, and idempotent removal.
 - Default test mode continues to use real desktop descriptors and host permissions with conditional preconditions; "no eligible" output means coverage was not exercised in that environment.
 
 Historical 1.0.4 default validation on the locked host passed 33 functions / 38 expanded cases with 17 skips. After explicit Recording consent, three consecutive capture suites passed with 12 functions executed and two denial tests inapplicable; separate native regression passed 14/14. The initial live suite failed its unchanged focus assertion when macOS UserNotificationCenter became frontmost. Preserve such failures and repeat after the system notification is resolved; do not suppress notifications, bypass consent or weaken focus assertions. See `M2_VALIDATION.md` for evidence and remaining manual checks.
 
 Final 1.0.5 default validation passed 34 functions / 39 cases with 16 skips; the separate consented coverage rerun passed all 12 applicable capture functions. Recheck that Test Lab is running after rebuilding: an intervening attempt correctly failed all three live prerequisites when the fixture process was absent. Do not combine native mutation tests and live capture tests concurrently against the same fixtures.
+
+Version 1.0.6 passes default 34 functions / 39 cases with 17 skips; the new parametrized opt-in raises inventory to 51 functions / 58 cases. Four post-fix live suites pass 13 functions / 15 cases each, with two denial skips, and separate M1 passes 14/14. Generate coverage immediately after coverage-enabled executions: rebuilding test binaries without coverage invalidates the corresponding profile. The final coherent live report measures lease 93.56% and preview 93.39% line coverage, with an observed real already-stopped error; other stop failures remain untested. Exact logs, failed closure baseline and rejected stale-profile report are recorded in `M2_VALIDATION.md`.
 
 ### Remaining layers
 - Unit: pure models, geometry, layout trees, physics, easing, serialization.
@@ -43,6 +46,7 @@ A separate macOS app creates real deterministic windows for M1:
 - standard resizable (A/B/disposable)
 - fixed-size
 - identical overlapping title/frame pairs (intentionally read-only)
+- independent M2 capture disposable (closed by the live capture suite, not by M1)
 
 Additional fixture coverage is still required for later milestones:
 - transparent

@@ -22,6 +22,7 @@ Local gate evidence and remaining manual platform checks: `M1_VALIDATION.md`. Ch
 - [x] Convert callback sample buffers into immutable BGRA frame data on the capture owner queue.
 - [x] Add bounded async frame flow (stream queue depth 3, newest-only async buffering 1).
 - [x] Implement stream lifecycle and error handling (single queue lease, start deadline 5s, stop deadline 3s).
+- [x] Exercise real target movement, minimization and closure after the first completed frame; remove overlay and reuse the same coordinator, with narrow already-stopped cleanup handling.
 - [x] Implement transparent overlay transaction for the selected display (not one panel per screen by default).
 - [ ] Verify z-order, Spaces and full-screen behavior on physical displays.
 - [ ] Verify idempotent teardown and crash recovery under late callbacks and unexpected process termination.

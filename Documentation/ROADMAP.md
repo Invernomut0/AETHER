@@ -2,7 +2,7 @@
 
 Durations are indicative estimates for one developer with coding-agent assistance, not guarantees.
 
-Local progress (1.0.5 build 6): M0/M1 and the local M2 capture/overlay proof have passed. Consented tests now validate fresh ScreenCaptureKit frames, Metal completion, removal, exclusions and cancellation with `AX=true`, `Recording=true` and secure input off. Full M2 acceptance still needs physical display and recovery checks. M3 has not started; its animation proof will subsequently be needed for the broader Living Window Gate 0.
+Local progress (1.0.6 build 7): M0/M1 and the local M2 capture/overlay proof have passed. Consented tests validate fresh ScreenCaptureKit frames, Metal completion, removal, exclusions, cancellation and real target move/minimize/close with same-coordinator recovery. Target closure exposed and now regression-tests an already-stopped cleanup fix. Full M2 acceptance still needs physical display and broader failure/recovery checks. M3 has not started; its animation proof will subsequently be needed for the broader Living Window Gate 0.
 
 | Milestone | Focus | Estimate | Exit gate |
 |---|---|---:|---|
