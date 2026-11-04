@@ -5,4 +5,4 @@ swift build
 swift test --enable-code-coverage
 bash Scripts/coverage.sh
 bash Scripts/build-apps.sh
-echo "Package and app validation completed. Opt-in gates: Scripts/test-window-integration.sh (AX), Scripts/test-capture-integration.sh (AX + Recording). M2 live gate remains pending."
+echo "Package and app validation completed. Run opt-in gates separately: Scripts/test-window-integration.sh (AX), Scripts/test-capture-integration.sh (AX + Recording). Default validation does not certify live gates."

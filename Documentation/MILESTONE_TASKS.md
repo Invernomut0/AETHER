@@ -18,14 +18,14 @@
 Local gate evidence and remaining manual platform checks: `M1_VALIDATION.md`. Checked does not imply universal AX support or release certification.
 
 ## M2 Capture & Overlay
-- [x] Implement SCStreamOutput callback path (implementation-only; live consent-host validation pending).
+- [x] Implement SCStreamOutput callback path and validate it with consented live Test Lab capture.
 - [x] Convert callback sample buffers into immutable BGRA frame data on the capture owner queue.
 - [x] Add bounded async frame flow (stream queue depth 3, newest-only async buffering 1).
 - [x] Implement stream lifecycle and error handling (single queue lease, start deadline 5s, stop deadline 3s).
 - [x] Implement transparent overlay transaction for the selected display (not one panel per screen by default).
 - [ ] Verify z-order, Spaces and full-screen behavior on physical displays.
 - [ ] Verify idempotent teardown and crash recovery under late callbacks and unexpected process termination.
-- [ ] Validate live ScreenCaptureKit output end-to-end with explicit Screen Recording consent on the test host.
+- [x] Validate live ScreenCaptureKit output end-to-end with explicit Screen Recording consent on the test host (fresh frame, removal, exclusions and cancellation; see `M2_VALIDATION.md`).
 
 ## M3 Motion
 - [ ] Implement monotonic timeline clock.

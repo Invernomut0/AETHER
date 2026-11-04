@@ -1,11 +1,11 @@
-# AETHER 1.0.4 (build 5)
+# AETHER 1.0.5 (build 6)
 ## The Desktop, in Motion.
 
 AETHER is a native macOS window-management and visual-effects system built with Swift, AppKit, SwiftUI, ScreenCaptureKit and Metal.
 
 **Product direction:** hybrid native-window control + temporary Metal overlays; effects-first; public APIs as the stable baseline; advanced integrations isolated behind optional adapters.
 
-> Engineering status: M0 and M1 were accepted locally. M2 first implementation is integrated in 1.0.4, but the Living Window Gate 0 is **not accepted yet**. On the latest host run, Accessibility was granted and Screen Recording was not (`AX=true`, `Recording=false`), so the live ScreenCaptureKit output path has not been runtime-validated on that host yet. No private API behavior is assumed to work, and catalog descriptors are not shipped effects.
+> Engineering status: M0 and M1 were accepted locally. The consented M2 capture/overlay proof now passes on the local Mac (`AX=true`, `Recording=true`, secure input off), including cancellation and native geometry/focus checks. Full M2 platform acceptance and the broader Living Window Gate 0 remain **pending**: physical display/recovery checks and M3 animation are not certified. No private API behavior is assumed to work, and catalog descriptors are not shipped effects.
 
 ## Open in Xcode
 
@@ -19,7 +19,9 @@ AETHER is a native macOS window-management and visual-effects system built with 
 
 Default validation does not auto-run opted-in live mutation gates (M1 fixtures and ScreenCaptureKit consent-dependent capture tests).
 
-Latest local 1.0.4 validation: package and both app builds passed; 33 test functions / 38 expanded cases executed, 17 explicitly skipped on a locked desktop. GPU tests verify real Metal submissions, not physical scanout. Interactive gates require an unlocked desktop, secure input finished and explicit permissions; neither script unlocks the session or grants access.
+Latest consented capture validation: three consecutive suites passed with 12 functions executed and two permission-denial functions inapplicable because Recording was granted; the separate native suite passed all 14 tests. The initial capture suite failed a focus assertion when macOS UserNotificationCenter became frontmost; no assertion or engine code was changed before the successful repetitions. GPU tests verify real Metal submissions, not physical scanout. Interactive gates require an unlocked desktop, secure input finished and explicit permissions; neither script unlocks the session or grants access.
+
+Final 1.0.5 default validation passed Swift/both app builds and 34 test functions / 39 cases, with 16 explicit skips. A separate live coverage rerun also passed (12 executed, two denial tests skipped); see `Documentation/M2_VALIDATION.md` for measured coverage and all failed attempts/prerequisites.
 
 ## Current bootstrap and permissions
 
@@ -37,7 +39,7 @@ For live integration, quit any running Test Lab instance, then run `bash Scripts
 
 ## M2 implementation snapshot (not gate-certified)
 
-The first capture/overlay vertical slice is now present, but certification is still pending explicit consent-based runtime validation.
+The capture/overlay vertical slice has passed local consent-based runtime validation. Full platform certification remains pending the manual checks below; see `Documentation/M2_VALIDATION.md` for exact evidence and the initial focus failure.
 
 After explicitly granting Screen Recording, open **Windows → Preview 5s**. **Stop preview**, Escape or leaving the panel cancels the transaction. Startup never starts capture; the original window remains interactive and authoritative. Add excluded bundle IDs to `captureExcludedBundleIDs` in the configuration file and restart after edits; set `effectsEnabled` to false to disable preview startup. Known credential-family exclusions are not an exhaustive detector of protected content.
 
@@ -54,7 +56,7 @@ To validate only controlled Test Lab capture, quit Test Lab and run `bash Script
 
 Current known limitations (still blocking M2 gate acceptance):
 
-- No live ScreenCaptureKit output-path validation has been completed on a host with Screen Recording consent granted.
+- Consented tests validate fresh ScreenCaptureKit frames reaching Metal, configured exclusions, cancellation and removal; they do not certify every lifecycle/failure path.
 - `framesPresented` currently counts GPU command completion, not verified on-screen presentation.
 - Texture-memory diagnostics are estimated (`allocatedTextureBytes`) and do not represent total GPU allocation.
 - Preview is diagnostic, not an M3 animation; the original window remains visible and authoritative.
@@ -64,7 +66,7 @@ Screen Recording remains part of the approved main visual-effects path. Native m
 
 See `TODO.md`, `IMPLEMENTATION_STATUS.md` and `Documentation/MILESTONE_TASKS.md` for the actual milestone boundary. The owner-provided source repository is [Invernomut0/AETHER](https://github.com/Invernomut0/AETHER), tracked as `origin` on branch `main`. Remote CI results must be checked separately from local validation.
 
-Local validation evidence and remaining manual checks are recorded in `Documentation/M0_VALIDATION.md`, `Documentation/M1_VALIDATION.md`, and `Documentation/M2_VALIDATION.md` (gate pending).
+Local validation evidence and remaining manual checks are recorded in `Documentation/M0_VALIDATION.md`, `Documentation/M1_VALIDATION.md`, and `Documentation/M2_VALIDATION.md` (local live proof passed; full platform acceptance pending).
 
 The package manifest targets macOS 14.0 and Apple Silicon as the primary architecture. Some advanced APIs and behaviors are availability-gated and must be checked against the SDK installed on the build machine.
 

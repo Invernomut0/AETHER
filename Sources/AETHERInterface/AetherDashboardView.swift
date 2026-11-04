@@ -58,7 +58,7 @@ public struct AetherDashboardView: View {
                 statusCard("Screen Recording", value: runtime.screenRecordingGranted ? "Granted" : "Not granted", symbol: "lock.shield")
             }
             Text("Welcome to AETHER").font(.title2.bold())
-            Text("Bootstrap loads your versioned configuration. Open Windows for native control and an explicit, five-second captured Metal preview. Startup never starts capture; the M2 live gate still requires validation with Screen Recording consent.")
+            Text("Bootstrap loads your versioned configuration. Open Windows for native control and an explicit, five-second captured Metal preview. Startup never starts capture. Preview requires Screen Recording consent; physical display and recovery checks remain manual.")
                 .foregroundStyle(.secondary)
             if let version = runtime.schemaVersion {
                 Text("Configuration schema: \(version)").font(.caption)

@@ -7,19 +7,20 @@ Owner: AETHER engineering (GitHub Copilot assisted). No delivery dates are commi
 - M0/M1: inspect the committed GitHub CI workflow; local results are not a CI run.
 - M1: review the Windows UI with VoiceOver, explicit denial/regrant and the rebuilt app's own Accessibility identity.
 - M1/M9: certify multiple physical displays/scales, app-specific AX constraints, permission revocation during IPC and macOS 14 runtime.
-- M2 exit gate: rerun with explicit Screen Recording consent on the test host (`AX=true`, `Recording=true`) and validate real ScreenCaptureKit output end-to-end.
+- M2: review consented capture/overlay evidence and the initial macOS UserNotificationCenter focus interruption in `Documentation/M2_VALIDATION.md`.
 - M2: complete manual checks for Spaces/full-screen z-order behavior, multi-display overlay behavior and crash/recovery cleanup.
 - M2: review denylist coverage for unknown credential managers and maintain `configuration.captureExcludedBundleIDs` guidance.
 
 ## To Do
-- M2 / Gate 0: collect explicit-consent live evidence (fresh frame presented and reliably removed) before marking M2 accepted.
 - M2: validate denial/revocation in flight, protected-content behavior, stress/runtime limits, and manual no-orphan/no-interaction visual checks.
-- M1/M2: unlock the desktop and finish secure input before rerunning interactive gates; direct AX probes returned application proxies while locked, correctly rejected as window identities.
-- M3–M9: wait for the M2 capture/overlay exit gate, then proceed in order. M3 animation is needed to complete the broader Living Window Gate 0 before scaling the effects catalog.
+- M1/M2: retain unlocked-desktop and secure-input prerequisites for future interactive runs; both permissions are now granted to the test host.
+- M3–M9: proceed in order after reviewing remaining M2 acceptance checks. The local capture/overlay proof has passed; M3 animation will still be needed to complete the broader Living Window Gate 0 before scaling the effects catalog.
 
 ## Done
+- Validate 1.0.5/build 6: Swift/both app builds, default 34 functions / 39 cases with 16 skips, and separate consented coverage rerun (12 executed, two denial skips). Live line coverage: capture lease 88.70%, preview coordinator 88.43%. Record the missing-fixture attempt rather than counting it as a pass.
+- M2 local capture/overlay proof: after explicit user consent, pass three consecutive capture suites (12 functions executed, two denial tests inapplicable) and native regression 14/14. Preserve the initial focus failure; full M2 platform acceptance remains pending.
 - Pass final default validation and both app builds at 1.0.4/build 5; execute 33 functions / 38 cases, explicitly skip 17 unavailable/opt-in functions. Verify both live scripts refuse the locked/unauthorized host with exit 2.
-- Version the first M2 implementation slice as 1.0.4 (build 5); implementation is complete for this increment but the M2 capture/overlay exit gate remains pending.
+- Version the first M2 implementation slice as 1.0.4 (build 5); its live proof was initially blocked and subsequently passed after user consent, documented in 1.0.5 (build 6).
 - M2 implementation: add ScreenCaptureKit callback path, bounded frame flow, preview transaction orchestration, privacy/permission checks and Metal overlay teardown hardening.
 - M1: replace first-window selection with unambiguous correlation, AX actor ownership, capabilities, generations and selected-window readback.
 - M1: integrate the Windows panel and real resizable/fixed/overlapping Test Lab windows; pass all 14 native tests with explicit opt-in.

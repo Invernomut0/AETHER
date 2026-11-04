@@ -9,7 +9,7 @@ Outputs:
 - `.build/Xcode/Build/Products/Debug/AETHER.app`
 - `.build/Xcode/Build/Products/Debug/AETHER Test Lab.app`
 
-Shared `AETHERApp` and `AETHERTestLab` schemes are committed. `Package.swift` contains libraries and tests, not app executable targets. Open the committed `AETHER.xcodeproj` for running apps. The project and `project.yml` both specify version 1.0.4 (build 5), Swift 6 and macOS 14. `-parse-as-library` allows the SwiftUI `@main` declarations in files named `main.swift`.
+Shared `AETHERApp` and `AETHERTestLab` schemes are committed. `Package.swift` contains libraries and tests, not app executable targets. Open the committed `AETHER.xcodeproj` for running apps. The project and `project.yml` both specify version 1.0.5 (build 6), Swift 6 and macOS 14. `-parse-as-library` allows the SwiftUI `@main` declarations in files named `main.swift`.
 
 M1 live control tests require a local interactive desktop and explicit Accessibility consent. Quit Test Lab and run `bash Scripts/test-window-integration.sh`; see `TESTING.md`. CI intentionally does not auto-grant permissions or run fixture mutations.
 
@@ -51,6 +51,6 @@ The `Scripts/notarize.sh` file is a template. Configure credentials in Keychain 
 
 ## Current release gate status (2026-11-04)
 - M0 and M1 are locally accepted.
-- M2 first implementation is integrated in version 1.0.4 (build 5), but Gate 0 remains pending.
-- Latest host state observed for capture testing was `AX=true`, `Recording=false`; no live consented ScreenCaptureKit output path has been certified there.
+- Version 1.0.5 records a passed local M2 capture/overlay proof, not full platform certification or Living Window Gate 0 acceptance.
+- Latest consented host state was `AX=true`, `Recording=true`, secure input off. Three consecutive capture suites passed (12 functions executed, two denial functions inapplicable); separate native regression passed 14/14. See `M2_VALIDATION.md` for the initial focus failure and remaining checks.
 - Do not advance to M3 until the M2 capture/overlay exit gate passes. M3 supplies animation for the broader Living Window Gate 0; neither milestone implies release readiness.

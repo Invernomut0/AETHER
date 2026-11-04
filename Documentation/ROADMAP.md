@@ -2,7 +2,7 @@
 
 Durations are indicative estimates for one developer with coding-agent assistance, not guarantees.
 
-Local progress (1.0.4 build 5): M0 and the conservative M1 Test Lab gate have passed. M2 is in progress with a first implementation slice integrated, but its capture/overlay exit gate remains unaccepted. Latest local host state was `AX=true`, `Recording=false` with the desktop locked, so live ScreenCaptureKit validation is pending. M3 waits for that M2 exit gate; M3 animation subsequently completes the broader Living Window Gate 0.
+Local progress (1.0.5 build 6): M0/M1 and the local M2 capture/overlay proof have passed. Consented tests now validate fresh ScreenCaptureKit frames, Metal completion, removal, exclusions and cancellation with `AX=true`, `Recording=true` and secure input off. Full M2 acceptance still needs physical display and recovery checks. M3 has not started; its animation proof will subsequently be needed for the broader Living Window Gate 0.
 
 | Milestone | Focus | Estimate | Exit gate |
 |---|---|---:|---|
@@ -31,7 +31,7 @@ Do not scale up the effect catalog until this gate is reliable.
 
 Current Gate 0 status:
 - Implementation code exists for capture, bounded frame flow, preview orchestration and overlay teardown.
-- Explicit consent-based runtime proof is still missing on the latest host because Screen Recording was not granted.
+- Explicit consent-based capture/overlay proof passed locally; full Living Window animation proof remains pending M3.
 - Physical multi-display Spaces/full-screen behavior and crash/recovery evidence are still pending manual validation.
 
 ## Parallelizable work

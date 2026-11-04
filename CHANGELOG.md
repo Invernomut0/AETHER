@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.5 — Consented M2 live evidence (2026-11-04)
+- Record three consecutive successful capture suites with pre-granted Accessibility/Recording and secure input off: 12 functions executed, two denial tests inapplicable per run.
+- Verify real ScreenCaptureKit frames reach Metal, overlays are removed, exclusions reject capture and cancellation preserves native geometry; separate M1 regression passes 14/14.
+- Preserve the initial focus assertion failure that observed macOS UserNotificationCenter becoming frontmost; no assertion or capture/render engine implementation was changed before the successful repetitions.
+- Replace stale dashboard/validation-script gate text and bump both app bundles to 1.0.5 (build 6).
+- Keep full M2 platform acceptance, physical scanout, recovery, release certification and M3 animation explicitly pending.
+
 ## 1.0.4 — M2 first implementation, gate pending (2026-11-04)
 - Integrate the first Living Window capture/overlay implementation slice without promoting it to gate acceptance.
 - Add ScreenCaptureKit output-path ownership with serial callback processing and immutable BGRA frame copies.

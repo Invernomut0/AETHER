@@ -19,15 +19,17 @@ The suite uses real external NSWindows, not self-process AX (which can deadlock 
 
 Geometry requires matching AX and CG frames across successive observations. Regression coverage includes moving before growth to avoid AppKit's display-edge clamp and waiting for WindowServer publication. Failed geometry transactions may be partial; the service invalidates the handle and requires refresh, rather than automatically overwriting newer user state.
 
-### M2 capture/overlay implementation coverage (first pass)
-M2 tests now include real capture-path and rendering-path checks, but Gate 0 is still pending explicit Screen Recording consent on the host where the full suite is run.
+### M2 capture/overlay implementation coverage
+M2 tests include real capture-path and rendering-path checks. The consented local capture/overlay proof passed; broader platform and Living Window animation acceptance remain pending.
 
 - Capture component tests cover observed desktop request validation, privacy exclusions, passive denial when a registered handle is available, callback deadline/cancellation behavior and idle cleanup. Actual ScreenCaptureKit sample conversion, bounded stream delivery and active teardown remain consent-dependent, not covered by default tests.
 - Live ScreenCaptureKit tests are opt-in and require explicit enablement plus pre-granted host permissions. If explicitly enabled without grant, they fail by design rather than being treated as fake passes.
 - Real Metal tests use an actual `Terminal.app` icon `CGContext` BGRA upload plus a real `NSWindow`; they validate GPU command completion, visible non-activating panel behavior, input passthrough/focus invariants, and idempotent removal.
 - Default test mode continues to use real desktop descriptors and host permissions with conditional preconditions; "no eligible" output means coverage was not exercised in that environment.
 
-Final 1.0.4 default validation on the locked host passed 33 functions / 38 expanded cases, with 17 explicit skips out of 50 functions / 55 cases. The three read-only handle-boundary tests skip without AX trust, during secure input, or (for denial tests) when Recording is already granted. Final full interactive validation is blocked by the locked desktop and absent Recording consent; earlier M1-only success is not a full M2 gate. See `M2_VALIDATION.md` for exact coverage and failure/prerequisite evidence.
+Historical 1.0.4 default validation on the locked host passed 33 functions / 38 expanded cases with 17 skips. After explicit Recording consent, three consecutive capture suites passed with 12 functions executed and two denial tests inapplicable; separate native regression passed 14/14. The initial live suite failed its unchanged focus assertion when macOS UserNotificationCenter became frontmost. Preserve such failures and repeat after the system notification is resolved; do not suppress notifications, bypass consent or weaken focus assertions. See `M2_VALIDATION.md` for evidence and remaining manual checks.
+
+Final 1.0.5 default validation passed 34 functions / 39 cases with 16 skips; the separate consented coverage rerun passed all 12 applicable capture functions. Recheck that Test Lab is running after rebuilding: an intervening attempt correctly failed all three live prerequisites when the fixture process was absent. Do not combine native mutation tests and live capture tests concurrently against the same fixtures.
 
 ### Remaining layers
 - Unit: pure models, geometry, layout trees, physics, easing, serialization.
