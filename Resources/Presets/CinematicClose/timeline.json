@@ -1,0 +1,8 @@
+{
+  "duration": 0.95,
+  "tracks": [
+    {"effect": "rotate3d", "start": 0.0, "duration": 0.25, "parameters": {"angle": 12, "axis": "y"}},
+    {"effect": "shatter", "start": 0.20, "duration": 0.55, "parameters": {"particles": 120, "gravity": 1.4}},
+    {"effect": "fade", "start": 0.65, "duration": 0.20, "parameters": {"opacity": 0}}
+  ]
+}

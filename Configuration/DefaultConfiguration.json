@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "launchAtLogin": false,
+  "effectsEnabled": true,
+  "quality": "auto",
+  "reduceMotion": false,
+  "captureExcludedBundleIDs": [],
+  "globalHotkeysEnabled": true
+}

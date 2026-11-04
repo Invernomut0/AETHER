@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "layouts": [
+    {
+      "id": "balanced-two-column",
+      "name": "Balanced",
+      "kind": "horizontalSplit",
+      "ratio": 0.5,
+      "children": [
+        {"kind": "leaf", "slot": "primary"},
+        {"kind": "leaf", "slot": "secondary"}
+      ]
+    }
+  ]
+}

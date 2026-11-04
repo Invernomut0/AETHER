@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "identifier": "com.aether.effects.cinematic-close",
+  "name": "Cinematic Close",
+  "minimumAetherVersion": "1.0.0",
+  "effects": ["rotate3d", "shatter", "fade"],
+  "permissions": [],
+  "signature": null
+}

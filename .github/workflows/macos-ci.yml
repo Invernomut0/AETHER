@@ -1,0 +1,24 @@
+name: macOS CI
+on:
+  push:
+  pull_request:
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Metal toolchain
+        run: |
+          if ! xcrun metal --version; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test --enable-code-coverage
+      - name: Aggregate coverage
+        run: bash Scripts/coverage.sh
+      - name: Build macOS applications
+        run: bash Scripts/build-apps.sh
