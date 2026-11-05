@@ -16,6 +16,120 @@ struct NativeWindowTests {
     private static let fixtureResizableB = "M1 Fixture Resizable B"
     private static let fixtureFixed = "M1 Fixture Fixed"
     private static let fixtureOverlap = "M1 Fixture Overlap"
+    private static let fixtureEffectDisposable = "AETHER Effect Disposable"
+
+    @Test("Close capability defaults false and old encoded capabilities remain readable")
+    func closeCapabilityCodableCompatibility() async throws {
+        let windows = try await NativeWindowService().refresh()
+        let observed = try #require(windows.first, "A real desktop window is required")
+        #expect(WindowCapabilities().canClose == false)
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let currentData = try encoder.encode(observed.capabilities)
+        #expect(try decoder.decode(WindowCapabilities.self, from: currentData) == observed.capabilities)
+
+        // Derive an old-format record from the real discovery result, not fabricated capabilities.
+        var oldRecord = try #require(try JSONSerialization.jsonObject(with: currentData) as? [String: Any])
+        oldRecord.removeValue(forKey: "canClose")
+        let oldData = try JSONSerialization.data(withJSONObject: oldRecord)
+        var expected = observed.capabilities
+        expected.canClose = false
+        #expect(try decoder.decode(WindowCapabilities.self, from: oldData) == expected)
+
+        // Wrong types still fail decoding; the compatibility default is not an authorization.
+        oldRecord["canClose"] = "true"
+        let invalidData = try JSONSerialization.data(withJSONObject: oldRecord)
+        #expect(throws: DecodingError.self) {
+            _ = try decoder.decode(WindowCapabilities.self, from: invalidData)
+        }
+    }
+
+    @Test("close() confirms only the exact external Effect Disposable generation", .enabled(if: runWindowIntegration))
+    func closeEffectDisposableConfirmsNativeDisappearance() async throws {
+        try #require(!IsSecureEventInputEnabled(), "Unlock the desktop and finish secure input")
+        try #require(AXIsProcessTrusted(), "Explicit Accessibility permission is required")
+        let applications = NSRunningApplication.runningApplications(withBundleIdentifier: Self.fixtureBundleIdentifier)
+            .filter { !$0.isTerminated && $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+        try #require(applications.count == 1, "Run exactly one external Test Lab with --m1-fixtures")
+        let app = try #require(applications.first)
+        let launchDate = try #require(app.launchDate)
+        let service = NativeWindowService()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        var matches: [WindowDescriptor] = []
+        while true {
+            matches = try await service.refresh().filter {
+                $0.processID == app.processIdentifier && $0.bundleIdentifier == Self.fixtureBundleIdentifier
+                    && $0.title == Self.fixtureEffectDisposable && $0.runtimeHandle != nil
+            }
+            if matches.count == 1 || ContinuousClock.now >= deadline { break }
+            try await Task.sleep(for: .milliseconds(80))
+        }
+        try #require(matches.count == 1, "Missing/ambiguous Effect Disposable; relaunch Test Lab before repeating")
+        let selected = try #require(matches.first)
+        let handle = try #require(selected.runtimeHandle)
+        #expect(selected.capabilities.canClose)
+        let validated = try await service.validatedWindow(handle)
+        try #require(validated.title == Self.fixtureEffectDisposable && validated.runtimeHandle == handle)
+        try #require(validated.capabilities.canClose)
+        let before = try fullNativeInventory()
+        let otherWindows = Set(before.filter { $0.pid == handle.processID && $0.id != handle.windowID.rawValue }.map(\.id))
+        try #require(before.contains { $0.id == handle.windowID.rawValue && $0.pid == handle.processID })
+
+        let forged = RuntimeWindowHandle(windowID: handle.windowID, processID: handle.processID)
+        try await expectAetherError(.notFound) { try await service.close(forged) }
+        try await expectAetherError(.notFound) { _ = try service.isWindowClosed(forged) }
+        try await expectAetherError(.notFound) { _ = try service.isWindowClosed(handle) }
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await service.close(handle)
+        }
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        try #require(try fullNativeInventory().contains { $0.id == handle.windowID.rawValue && $0.pid == handle.processID })
+        try #require(app.launchDate == launchDate && !app.isTerminated)
+
+        try await service.close(handle)
+        #expect(try service.isWindowClosed(handle))
+        let after = try fullNativeInventory()
+        #expect(!after.contains { $0.id == handle.windowID.rawValue && $0.pid == handle.processID })
+        #expect(otherWindows.isSubset(of: Set(after.filter { $0.pid == handle.processID }.map(\.id))))
+        #expect(!app.isTerminated && app.launchDate == launchDate)
+        try await expectAetherError(.notFound) { try await service.close(handle) }
+        try await expectAetherError(.notFound) { _ = try await service.validatedWindow(handle) }
+        try await expectAetherError(.notFound) { try await service.activate(handle) }
+        _ = try await service.refresh()
+        #expect(try service.isWindowClosed(handle), "Closure read-side remains available after discovery refresh")
+    }
+
+    /// Independent public CG assertion: never filter by visibility, frame, title or layer.
+    private func fullNativeInventory() throws -> [(id: UInt32, pid: Int32)] {
+        let rows = try #require(CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]])
+        return try rows.map {
+            let id = try #require($0[kCGWindowNumber as String] as? NSNumber)
+            let pid = try #require($0[kCGWindowOwnerPID as String] as? NSNumber)
+            return (id.uint32Value, pid.int32Value)
+        }
+    }
+
+    @Test("Full closure inventory retains a real ordered-out NSWindow")
+    func hiddenWindowIsNotClosed() async throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 80, y: 120, width: 320, height: 220),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.orderFront(nil)
+        let handle = RuntimeWindowHandle(windowID: WindowID(rawValue: UInt32(window.windowNumber)),
+                                         processID: ProcessInfo.processInfo.processIdentifier)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while try !NativeWindowInventory.contains(handle), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(40))
+        }
+        try #require(try NativeWindowInventory.contains(handle), "Real window must be registered before hiding")
+        window.orderOut(nil)
+        #expect(window.isVisible == false)
+        #expect(try NativeWindowInventory.contains(handle), "Off-screen is not closed")
+        #expect(try fullNativeInventory().contains { $0.id == handle.windowID.rawValue && $0.pid == handle.processID })
+    }
 
     @Test("refresh() performs real desktop discovery without writes")
     func desktopDiscoveryReadOnly() async throws {
@@ -236,7 +350,7 @@ struct NativeWindowTests {
         let service = NativeWindowService()
         let fixtures = try await requireFixtureDescriptors(using: service)
         let disposable = try #require(fixtures.first {
-            ($0.title ?? "").hasSuffix("Disposable") && $0.runtimeHandle != nil
+            $0.title == "M1 Fixture Resizable Disposable" && $0.runtimeHandle != nil
         })
         let handle = try #require(disposable.runtimeHandle)
         let title = try #require(disposable.title)

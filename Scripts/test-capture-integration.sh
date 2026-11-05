@@ -3,6 +3,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Explicit opt-in only: capture Test Lab, never request or alter permissions.
+if pgrep -x Kinetiq >/dev/null; then
+    echo "Stop Kinetiq normally before running independent AETHER capture tests. No capture started."
+    exit 2
+fi
 if swift -e 'import CoreGraphics; import ApplicationServices; import Carbon; import Darwin; exit(AXIsProcessTrusted() && CGPreflightScreenCaptureAccess() && !IsSecureEventInputEnabled() ? 0 : 2)'; then
     :
 else
@@ -15,4 +19,4 @@ if pgrep -x 'AETHER Test Lab' >/dev/null; then
 fi
 bash Scripts/build-apps.sh
 open -n '.build/Xcode/Build/Products/Debug/AETHER Test Lab.app' --args --m1-fixtures
-AETHER_RUN_CAPTURE_INTEGRATION=1 swift test --filter CapturePipelineTests
+AETHER_RUN_CAPTURE_INTEGRATION=1 swift test --enable-code-coverage --filter CapturePipelineTests

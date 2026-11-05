@@ -6,13 +6,32 @@ public struct WindowCapabilities: Codable, Sendable, Equatable {
     public var canSetSize: Bool
     public var canFocus: Bool
     public var canCapture: Bool
+    /// True only when the native close button is enabled and advertises AXPress.
+    public var canClose: Bool
     public init(canReadFrame: Bool = false, canSetPosition: Bool = false,
-                canSetSize: Bool = false, canFocus: Bool = false, canCapture: Bool = false) {
+                canSetSize: Bool = false, canFocus: Bool = false, canCapture: Bool = false,
+                canClose: Bool = false) {
         self.canReadFrame = canReadFrame
         self.canSetPosition = canSetPosition
         self.canSetSize = canSetSize
         self.canFocus = canFocus
         self.canCapture = canCapture
+        self.canClose = canClose
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case canReadFrame, canSetPosition, canSetSize, canFocus, canCapture, canClose
+    }
+
+    /// Older capability records have no close authorization; never infer it on decode.
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        canReadFrame = try values.decode(Bool.self, forKey: .canReadFrame)
+        canSetPosition = try values.decode(Bool.self, forKey: .canSetPosition)
+        canSetSize = try values.decode(Bool.self, forKey: .canSetSize)
+        canFocus = try values.decode(Bool.self, forKey: .canFocus)
+        canCapture = try values.decode(Bool.self, forKey: .canCapture)
+        canClose = try values.decodeIfPresent(Bool.self, forKey: .canClose) ?? false
     }
 }
 

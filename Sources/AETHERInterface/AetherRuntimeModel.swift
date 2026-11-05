@@ -18,6 +18,7 @@ public final class AetherRuntimeModel {
     private let permissions = PermissionCoordinator()
     private let windowService = NativeWindowService()
     private var previewCoordinator: WindowPreviewCoordinator?
+    private var effectCoordinator: WindowEffectCoordinator?
     public private(set) var windows: [WindowDescriptor] = []
     public private(set) var isWindowOperationRunning = false
     public private(set) var isPreviewRunning = false
@@ -25,9 +26,13 @@ public final class AetherRuntimeModel {
 
     public init() {
         previewCoordinator = WindowPreviewCoordinator(windows: windowService)
+        effectCoordinator = WindowEffectCoordinator(windows: windowService)
     }
 
-    func removePreviewOverlay() { previewCoordinator?.removeOverlay() }
+    func removePreviewOverlay() {
+        previewCoordinator?.removeOverlay()
+        effectCoordinator?.removeOverlay()
+    }
 
     public func start() async {
         guard !isStarting, !isRunning else { return }
@@ -71,13 +76,35 @@ public final class AetherRuntimeModel {
         defer { isWindowOperationRunning = false; isPreviewRunning = false }
         do {
             await refreshPermissions()
+            // The external engine owns global drag/capture/parking while active. Discovery is
+            // still safe; do not layer an independent mutation or renderer over its transaction.
+            if case .refresh = command {
+                KinetiqEngineCoordinator.shared.refreshStatus()
+            } else if KinetiqEngineCoordinator.shared.isActive {
+                throw AetherError.invalidState("Stop Kinetiq in Effects before using AETHER native controls or diagnostic overlays")
+            }
             switch command {
             case .refresh: break
             case .focus(let handle): try await windowService.activate(handle)
             case .setFrame(let handle, let frame): try await windowService.setFrame(frame.cgRect, for: handle)
+            case .effect(let handle, let kind):
+                guard let configuration = await coordinator.currentConfiguration(), let effectCoordinator else {
+                    throw AetherError.invalidState("Start AETHER before requesting an effect")
+                }
+                guard !KinetiqEngineCoordinator.shared.isActive else {
+                    throw AetherError.invalidState("Kinetiq became active; stop it before requesting a diagnostic effect")
+                }
+                isPreviewRunning = true
+                let report = try await effectCoordinator.perform(kind, on: handle, configuration: configuration,
+                                                                 duration: kind == .wobble ? .seconds(2) : .milliseconds(1100))
+                let label = report.nativeWindowClosed ? "Native closure verified · dissolve" : "Wobble preview · native window unchanged"
+                windowMessage = "\(label): \(report.framesPresented) GPU-completed frames · overlay removed: \(report.overlayRemoved) · Reduce Motion: \(report.reducedMotion)"
             case .preview(let handle), .livePreview(let handle):
                 guard let configuration = await coordinator.currentConfiguration(), let previewCoordinator else {
                     throw AetherError.invalidState("Start AETHER successfully before requesting capture")
+                }
+                guard !KinetiqEngineCoordinator.shared.isActive else {
+                    throw AetherError.invalidState("Kinetiq became active; stop it before requesting a diagnostic preview")
                 }
                 isPreviewRunning = true
                 let mode: WindowPreviewMode

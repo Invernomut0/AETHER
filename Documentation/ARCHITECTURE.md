@@ -11,8 +11,18 @@
 7. Layouts: tiling tree, constraints, snapping, logical workspaces.
 8. Persistence/intelligence: SQLite, presets, rules and optional LLM provider.
 
+## Explicit experimental engine contract — 5 November 2026
+
+The requested desktop-effects engine is the **real external Kinetiq.app**, not AETHER's independent manual spring-lattice/dissolve preview. `AETHERCore/KinetiqEngineCoordinator` manages explicit launch/connect and normal quit; `AETHERInterface/KinetiqEnginePanel` is the Effects-page control surface. Kinetiq owns its physics, shaders, global input integration and capture in a separate process. No Kinetiq source/assets are linked or copied into AETHER, and there is no effect-control/readiness IPC.
+
+The updated user contract authorizes **private AX mapping, event-tap/click replay and temporary off-screen native-window parking** in this optional experimental path. It remains disabled by default in AETHER, permission-gated and risk-labelled; the public-API Windows diagnostics remain available without Kinetiq after it exits. ADR 0002's public stable baseline remains in force. This authorization is not full M2/M3/M4 acceptance or release certification.
+
+RuntimeModel admission blocks AETHER focus/move/capture/effects for active/pending/unresolved engines, including independent instances; passive discovery is allowed. It rechecks after configuration await; visible panels observe status every **500ms**, without autostart. Final **7/7 XCTest** includes actual RuntimeModel six command rejections, passive refresh and unchanged fixture geometry/visibility. `@testable AETHERInterface` is a **CoreTests-only dependency**, not production Core (no cycle). This is **not a cross-process IPC lock**: an independent external start during already-in-flight AETHER work is not atomically prevented. Finish/cancel operations/overlays before any external launch; do not infer unconditional mutual exclusion. Late/refused-quit timing and visual readiness remain manual/source-contract review. See `KINETIQ_ENGINE.md` and `VISUAL_EFFECTS_VALIDATION.md` for exact receipts/limits.
+
 ## Source of truth
 Native window state is authoritative. Overlay state is transient and must never be treated as the actual application window.
+
+Experimental Kinetiq may temporarily move a real native window off-screen while presenting its captured representation. This is authorized native-state mutation, not closure or transfer of authority to an overlay. Restoring/reconciling native state on normal termination is the intended target; failed AX operations or crashes can leave windows displaced. Process exit is not restoration proof, and AETHER cannot promise crash recovery for the external engine.
 
 ## Dependency direction
 Shared contracts are at the bottom. Feature modules depend on Shared and narrow abstractions. UI depends on orchestration-facing interfaces. Rendering must not depend on SwiftUI. Physics must not depend on AppKit. No circular dependencies.
@@ -45,7 +55,9 @@ A CGWindowID is a runtime identifier, not a durable persistent identity. Use a r
 Any failure after overlay presentation must execute cleanup and native-state reconciliation.
 
 ## Capture policy
-Capture on demand, not continuously for all windows. Apply privacy exclusions. Do not capture protected/DRM content where the system prevents it. Keep queues bounded and drop stale frames rather than accumulating latency.
+For AETHER-owned capture, capture on demand, not continuously for all windows. Apply privacy exclusions. Do not capture protected/DRM content where the system prevents it. Keep queues bounded and drop stale frames rather than accumulating latency.
+
+External Kinetiq uses its own `captureSampleBuffer` path, including prefetch/recapture on raise, not exactly one image per gesture. AETHER limits, deadlines, denylist and Reduce Motion are not inherited. Kinetiq needs its own user-granted AX/Recording; AETHER bootstrap, selection and status refresh stay passive. Explicit **Kinetiq Start / Connect** launches/connects and may show its own prompts; no automatic grants. Never bypass indicators or claim they are absent.
 
 ## Rendering policy
 Use a render graph with optional passes. Keep a low-cost path for simple effects. Dynamic quality can reduce texture resolution, blur passes, mesh complexity and particle count under load.

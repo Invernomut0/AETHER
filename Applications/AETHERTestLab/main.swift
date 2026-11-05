@@ -30,7 +30,7 @@ struct TestLabView: View {
     var body: some View {
         VStack(spacing: 20) {
             Text("AETHER Test Lab").font(.largeTitle.bold())
-            Text("Live NSWindow fixtures for M1 discovery/control integration tests.")
+            Text("Live NSWindow fixtures for native control and explicit visual-effect checks.")
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 12) {
@@ -39,6 +39,8 @@ struct TestLabView: View {
                 Button("Open Two Overlapping Fixtures") { TestWindowController.shared.openOverlappingFixtures() }
                 Button("Increment Content") { counter += 1 }
             }
+
+            Button("Open Effect Disposable") { TestWindowController.shared.openEffectDisposable() }
 
             Text("Dynamic content: \(counter)")
                 .font(.system(size: 34, weight: .bold, design: .rounded))
@@ -49,6 +51,8 @@ struct TestLabView: View {
                 Text("Launch with --m1-fixtures to spawn deterministic startup windows.")
                 Text("Expected titles: Resizable A/B/Disposable, Fixed, and two identical Overlap windows.")
                 Text("Includes a separate M2 disposable for capture interruption tests; relaunch before repeating the live suite.")
+                Text("Use AETHER Effect Disposable for Close with dissolve; reopen it with the button above.")
+                Text("AETHER Refuses Close deliberately declines native close requests to test safe failure.")
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -68,6 +72,8 @@ final class TestWindowController {
         static let resizableB = "M1 Fixture Resizable B"
         static let resizableDisposable = "M1 Fixture Resizable Disposable"
         static let captureDisposable = "M2 Fixture Capture Disposable"
+        static let effectDisposable = "AETHER Effect Disposable"
+        static let refusingClose = "AETHER Refuses Close"
         static let fixed = "M1 Fixture Fixed"
         static let overlap = "M1 Fixture Overlap"
     }
@@ -94,6 +100,17 @@ final class TestWindowController {
         openFixedSizeFixture()
         openOverlappingFixtures()
         openResizableFixture(title: Titles.captureDisposable, frame: Frames.resizableDisposable.offsetBy(dx: 24, dy: 24))
+        openEffectDisposable()
+        openWindow(title: Titles.refusingClose, frame: Frames.resizableDisposable.offsetBy(dx: 72, dy: 72),
+                   styleMask: [.titled, .closable, .miniaturizable, .resizable], allowsClose: false)
+    }
+
+    func openEffectDisposable() {
+        if let existing = windows.values.first(where: { $0.title == Titles.effectDisposable }) {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+        openResizableFixture(title: Titles.effectDisposable, frame: Frames.resizableDisposable.offsetBy(dx: 48, dy: 48))
     }
 
     func openResizableFixture() {
@@ -125,7 +142,8 @@ final class TestWindowController {
         title: String,
         frame: NSRect,
         styleMask: NSWindow.StyleMask,
-        fixedContentSize: NSSize? = nil
+        fixedContentSize: NSSize? = nil,
+        allowsClose: Bool = true
     ) {
         let window = NSWindow(contentRect: frame, styleMask: styleMask, backing: .buffered, defer: false)
         window.title = title
@@ -135,13 +153,13 @@ final class TestWindowController {
             window.contentMaxSize = fixedContentSize
         }
         window.contentView = NSHostingView(rootView: FixtureView(title: title))
-        register(window)
+        register(window, allowsClose: allowsClose)
         window.makeKeyAndOrderFront(nil)
     }
 
-    private func register(_ window: NSWindow) {
+    private func register(_ window: NSWindow, allowsClose: Bool) {
         let key = ObjectIdentifier(window)
-        let delegate = FixtureWindowDelegate { [weak self, weak window] in
+        let delegate = FixtureWindowDelegate(allowsClose: allowsClose) { [weak self, weak window] in
             guard let self, let window else { return }
             self.unregister(window)
         }
@@ -159,10 +177,14 @@ final class TestWindowController {
 
 private final class FixtureWindowDelegate: NSObject, NSWindowDelegate {
     private let onClose: () -> Void
+    private let allowsClose: Bool
 
-    init(onClose: @escaping () -> Void) {
+    init(allowsClose: Bool, onClose: @escaping () -> Void) {
+        self.allowsClose = allowsClose
         self.onClose = onClose
     }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool { allowsClose }
 
     func windowWillClose(_ notification: Notification) {
         onClose()

@@ -179,6 +179,49 @@ actor WindowAccessibilitySession {
         try requireSuccess(AXUIElementSetAttributeValue(candidate.element, kAXMainAttribute as CFString, kCFBooleanTrue), operation: "Select main window")
     }
 
+    /// AX elements and the enabled/action probe remain exclusively actor-owned.
+    /// AppKit process identity is reacquired by the facade immediately before the write.
+    func close(_ handle: RuntimeWindowHandle, process: WindowProcessSnapshot,
+               currentProcess: @MainActor @Sendable () throws -> WindowProcessSnapshot) async throws {
+        let preparationDeadline = clock.now.advanced(by: .seconds(2))
+        let candidate = try resolve(handle, process: process, deadline: preparationDeadline)
+        let current = try await currentProcess()
+        guard let entry = entries[handle.windowID] else {
+            throw AetherError.notFound("The window generation was invalidated before close")
+        }
+        guard current.id == process.id, current.launchDate == process.launchDate,
+              entry.handle == handle, CFEqual(entry.element, candidate.element) else {
+            throw AetherError.notFound("Window or process identity changed before close")
+        }
+        try validateInFlight(handle, element: candidate.element, deadline: preparationDeadline)
+        guard try NativeWindowInventory.contains(handle),
+              let button = try closeButton(candidate.element, pid: handle.processID, deadline: preparationDeadline) else {
+            throw AetherError.unsupported("The selected window has no enabled AXPress close button or disappeared")
+        }
+        // Last cancellation boundary before the irreversible request; no suspension before press.
+        try checkpoint(preparationDeadline)
+        let deadline = clock.now.advanced(by: .seconds(2))
+        let pressResult = AXUIElementPerformAction(button, kAXPressAction as CFString)
+        do {
+            // AX IPC can time out while the application's modal close callback still runs.
+            // Never press again: only actual CG disappearance can establish success.
+            while true {
+                try checkpoint(deadline)
+                if try !NativeWindowInventory.contains(handle) {
+                    entries.removeValue(forKey: handle.windowID)
+                    return
+                }
+                // Conditional polling, not a delay taken as evidence of closure.
+                try await Task.sleep(for: .milliseconds(40))
+            }
+        } catch {
+            let reason = error is CancellationError
+                ? "Cancelled after AXPress; the native close request may still complete."
+                : "Window remains present (possibly an unsaved sheet/refusal), or verification failed. AXPress result: \(pressResult.rawValue). \(error)"
+            throw NativeWindowCloseError.outcomeUnconfirmed(reason: reason)
+        }
+    }
+
     func verifyFocus(_ handle: RuntimeWindowHandle, process: WindowProcessSnapshot) async throws {
         let deadline = clock.now.advanced(by: .seconds(2))
         do {
@@ -279,13 +322,33 @@ actor WindowAccessibilitySession {
             let position = try settable(element, kAXPositionAttribute, deadline: deadline)
             let size = try settable(element, kAXSizeAttribute, deadline: deadline)
             let main = try settable(element, kAXMainAttribute, deadline: deadline)
+            let canClose = try closeButton(element, pid: pid, deadline: deadline) != nil
             result.append(Candidate(element: element, metadata: AXWindowMetadata(
                 processID: pid, frame: frame, title: title, isMinimized: minimized,
                 capabilities: WindowCapabilities(canReadFrame: frame != nil, canSetPosition: position,
-                                                 canSetSize: size, canFocus: canRaise && main)
+                                                 canSetSize: size, canFocus: canRaise && main, canClose: canClose)
             )))
         }
         return result
+    }
+
+    /// Read-only public AX probe; unsupported, disabled or foreign-process buttons fail closed.
+    private func closeButton(_ window: AXUIElement, pid: Int32,
+                             deadline: ContinuousClock.Instant) throws -> AXUIElement? {
+        guard let value = try read(window, kAXCloseButtonAttribute, deadline: deadline),
+              CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        let button = unsafeDowncast(value, to: AXUIElement.self)
+        try requireSuccess(AXUIElementSetMessagingTimeout(button, 0.15), operation: "Set AX close button timeout")
+        try checkpoint(deadline)
+        var owner: pid_t = 0
+        guard AXUIElementGetPid(button, &owner) == .success, owner == pid,
+              (try read(button, kAXEnabledAttribute, deadline: deadline) as? NSNumber)?.boolValue == true else { return nil }
+        var actions: CFArray?
+        try checkpoint(deadline)
+        let result = AXUIElementCopyActionNames(button, &actions)
+        if result == .cannotComplete { throw AetherError.timeout("AX close action query timed out") }
+        guard result == .success, (actions as? [String])?.contains(kAXPressAction) == true else { return nil }
+        return button
     }
 
     private func read(_ element: AXUIElement, _ attribute: String, deadline: ContinuousClock.Instant) throws -> CFTypeRef? {

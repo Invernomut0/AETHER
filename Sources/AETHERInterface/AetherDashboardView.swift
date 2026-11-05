@@ -26,6 +26,8 @@ public struct AetherDashboardView: View {
                         overview
                     } else if selectedSection == "Windows" {
                         NativeWindowsPanel(runtime: runtime)
+                    } else if selectedSection == "Effects" {
+                        KinetiqEnginePanel(runtime: runtime)
                     } else {
                         ContentUnavailableView(
                             selectedSection,
@@ -58,7 +60,7 @@ public struct AetherDashboardView: View {
                 statusCard("Screen Recording", value: runtime.screenRecordingGranted ? "Granted" : "Not granted", symbol: "lock.shield")
             }
             Text("Welcome to AETHER").font(.title2.bold())
-            Text("Bootstrap loads your versioned configuration. Open Windows for native control and an explicit, five-second captured Metal preview. Startup never starts capture. Preview requires Screen Recording consent; physical display and recovery checks remain manual.")
+            Text("Bootstrap loads your versioned configuration. Open Effects to explicitly start or connect to the real, separately installed Kinetiq engine. It uses experimental private APIs and off-screen parking, requires its own permissions, and continues running if AETHER quits. Windows provides AETHER's separate native diagnostics. Startup never starts Kinetiq or capture; physical display and recovery checks remain manual.")
                 .foregroundStyle(.secondary)
             if let version = runtime.schemaVersion {
                 Text("Configuration schema: \(version)").font(.caption)
