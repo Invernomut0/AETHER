@@ -75,13 +75,16 @@ public final class AetherRuntimeModel {
             case .refresh: break
             case .focus(let handle): try await windowService.activate(handle)
             case .setFrame(let handle, let frame): try await windowService.setFrame(frame.cgRect, for: handle)
-            case .preview(let handle):
+            case .preview(let handle), .livePreview(let handle):
                 guard let configuration = await coordinator.currentConfiguration(), let previewCoordinator else {
                     throw AetherError.invalidState("Start AETHER successfully before requesting capture")
                 }
                 isPreviewRunning = true
-                let report = try await previewCoordinator.preview(handle, configuration: configuration)
-                windowMessage = "Preview: \(report.framesPresented) GPU-completed frames · overlay removed: \(report.overlayRemoved) · native frame unchanged: \(report.nativeFrameUnchanged)"
+                let mode: WindowPreviewMode
+                if case .livePreview = command { mode = .live } else { mode = .snapshot }
+                let report = try await previewCoordinator.preview(handle, configuration: configuration, mode: mode)
+                let label = report.mode == .snapshot ? "Static snapshot" : "Live recording diagnostic"
+                windowMessage = "\(label): \(report.framesPresented) GPU-completed frames · overlay removed: \(report.overlayRemoved) · native frame unchanged: \(report.nativeFrameUnchanged)"
             }
             windows = try await windowService.refresh()
             let resolved = windows.filter { $0.runtimeHandle != nil }.count

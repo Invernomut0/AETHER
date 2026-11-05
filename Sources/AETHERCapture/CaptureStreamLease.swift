@@ -24,6 +24,7 @@ final class CaptureStreamLease: NSObject, SCStreamOutput, SCStreamDelegate, @unc
     private var stream: SCStream? // queue only, as are all following fields
     private var stopping = false
     private var startPending = false
+    private var startDeadline: CallbackDeadline<Void>?
     private var stopPending = false
     private var stopWaiters: [CallbackDeadline<Void>] = []
 
@@ -44,6 +45,13 @@ final class CaptureStreamLease: NSObject, SCStreamOutput, SCStreamDelegate, @unc
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (waiter: CheckedContinuation<Void, any Error>) in
                 guard deadline.install(waiter, timeout: .seconds(5)) else { return }
+                queue.async {
+                    guard !self.stopping else {
+                        deadline.finish(.failure(CancellationError()))
+                        return
+                    }
+                    self.startDeadline = deadline
+                }
                 SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
                     let failure = error.map { AetherError.operationFailed("Shareable content: \($0.localizedDescription)") }
                     let transfer = content.map { ContentTransfer(content: $0) }
@@ -53,7 +61,10 @@ final class CaptureStreamLease: NSObject, SCStreamOutput, SCStreamDelegate, @unc
                             if let failure { throw failure }
                             guard let transfer else { throw AetherError.resourceUnavailable("No shareable content") }
                             try self.configure(content: transfer.content, request: request, deadline: deadline)
-                        } catch { deadline.finish(.failure(error)) }
+                        } catch {
+                            self.startDeadline = nil
+                            deadline.finish(.failure(error))
+                        }
                     }
                 }
             }
@@ -109,6 +120,7 @@ final class CaptureStreamLease: NSObject, SCStreamOutput, SCStreamDelegate, @unc
             let failure = error.map { AetherError.operationFailed("Stream start: \($0.localizedDescription)") }
             self.queue.async {
                 self.startPending = false
+                self.startDeadline = nil
                 if self.stopping {
                     self.requestStop(waiter: nil)
                 } else if let failure {
@@ -123,6 +135,10 @@ final class CaptureStreamLease: NSObject, SCStreamOutput, SCStreamDelegate, @unc
 
     private func requestStop(waiter: CallbackDeadline<Void>?) {
         stopping = true
+        // Stop must settle Start even before enumeration or stream startup completes.
+        // This closes only the Swift waiter; pending SDK resources still require confirmed stop.
+        startDeadline?.finish(.failure(CancellationError()))
+        startDeadline = nil
         setActive(false)
         continuation.finish()
         if let waiter { stopWaiters.append(waiter) }

@@ -6,7 +6,14 @@ import AETHERWindowManager
 import AETHERCapture
 import AETHERRendering
 
+/// Snapshot is a single captured image; live explicitly opens a continuous recording stream.
+public enum WindowPreviewMode: Sendable {
+    case snapshot
+    case live
+}
+
 public struct WindowPreviewReport: Sendable {
+    public let mode: WindowPreviewMode
     public let framesPresented: UInt64
     public let overlayRemoved: Bool
     public let nativeFrameUnchanged: Bool
@@ -33,7 +40,7 @@ public final class WindowPreviewCoordinator {
     }
 
     public func preview(_ handle: RuntimeWindowHandle, configuration: AetherConfiguration,
-                        duration: Duration = .seconds(5)) async throws -> WindowPreviewReport {
+                        duration: Duration = .seconds(5), mode: WindowPreviewMode = .snapshot) async throws -> WindowPreviewReport {
         try Task.checkCancellation()
         guard !running else { throw AetherError.invalidState("Another preview is still cleaning up") }
         guard configuration.effectsEnabled, duration > .zero, duration <= .seconds(5) else {
@@ -41,11 +48,15 @@ public final class WindowPreviewCoordinator {
         }
         running = true
         stopRequested = false
+        framesPresented = 0
         defer { running = false }
         let original = try await windows.validatedWindow(handle)
         let request = try CaptureRequest(window: original, excludedBundleIDs: configuration.captureExcludedBundleIDs)
         // A passive permission check in capture runs before any SCK enumeration.
         try await capture.stopAllCaptures()
+        if mode == .snapshot {
+            return try await previewSnapshot(request, original: original, duration: duration)
+        }
         let session = try await capture.startCapture(request: request)
         var outcome: Result<Void, any Error>
         do {
@@ -64,7 +75,41 @@ public final class WindowPreviewCoordinator {
         try outcome.get()
         let reconciled = try await windows.validatedWindow(handle)
         try requireUnchanged(reconciled, original: original)
-        return WindowPreviewReport(framesPresented: framesPresented,
+        return WindowPreviewReport(mode: .live, framesPresented: framesPresented,
+                                   overlayRemoved: renderer?.diagnostics().isVisible == false,
+                                   nativeFrameUnchanged: true)
+    }
+
+    /// Capture once, release all screenshot SDK ownership, then hold that explicitly static image.
+    /// No timer refreshes screenshots and no SCStream runs behind the normal preview.
+    private func previewSnapshot(_ request: CaptureRequest, original: WindowDescriptor,
+                                 duration: Duration) async throws -> WindowPreviewReport {
+        var outcome: Result<Void, any Error>
+        do {
+            let frame = try await capture.captureSnapshot(request: request)
+            try Task.checkCancellation()
+            guard !stopRequested else { throw CancellationError() }
+            let current = try await windows.validatedWindow(request.handle)
+            try requireUnchanged(current, original: original)
+            guard ProcessInfo.processInfo.systemUptime - frame.receivedAtUptime <= 1,
+                  let rect = original.frame?.cgRect else {
+                throw AetherError.timeout("Snapshot was stale before presentation")
+            }
+            if renderer == nil { renderer = MetalOverlayPresenter() }
+            guard let renderer else { throw AetherError.resourceUnavailable("Metal preview unavailable") }
+            try await renderer.present(frame.pixels, frame: rect, relativeTo: Int(request.handle.windowID.rawValue))
+            guard !stopRequested else { throw CancellationError() }
+            framesPresented = 1
+            try await monitor(handle: request.handle, original: original, duration: duration)
+            outcome = .success(())
+        } catch { outcome = .failure(error) }
+        renderer?.remove()
+        do { try await capture.stopAllCaptures() }
+        catch { outcome = .failure(AetherError.operationFailed("Snapshot cleanup failed: \(error)")) }
+        try outcome.get()
+        let reconciled = try await windows.validatedWindow(request.handle)
+        try requireUnchanged(reconciled, original: original)
+        return WindowPreviewReport(mode: .snapshot, framesPresented: framesPresented,
                                    overlayRemoved: renderer?.diagnostics().isVisible == false,
                                    nativeFrameUnchanged: true)
     }
@@ -105,7 +150,9 @@ public final class WindowPreviewCoordinator {
                          duration: Duration) async throws {
         let clock = ContinuousClock()
         let started = clock.now
-        var nextValidation = started
+        // Both paths validate after capture and before presentation. Do not immediately
+        // repeat AX IPC as the first frame becomes visible; native visibility is checked below.
+        var nextValidation = started.advanced(by: .milliseconds(500))
         while clock.now - started < duration {
             try Task.checkCancellation()
             guard !stopRequested else { throw CancellationError() }
@@ -113,6 +160,7 @@ public final class WindowPreviewCoordinator {
                 removeOverlay()
                 throw AetherError.permissionDenied("Recording permission revoked or secure input enabled")
             }
+            try requireNativeVisibility(original)
             if framesPresented == 0 && clock.now - started >= .seconds(2) {
                 throw AetherError.timeout("No complete fresh frame arrived within two seconds")
             }
@@ -124,6 +172,21 @@ public final class WindowPreviewCoordinator {
             try await Task.sleep(for: .milliseconds(100))
         }
         guard framesPresented > 0 else { throw AetherError.timeout("No frame was presented") }
+    }
+
+    /// WindowServer can publish minimization before AX becomes responsive during the system
+    /// transition. Reject that native state before AX IPC; this never replaces AX generation checks.
+    private func requireNativeVisibility(_ original: WindowDescriptor) throws {
+        guard let rows = CGWindowListCopyWindowInfo(.optionIncludingWindow, original.id.rawValue) as? [[String: Any]] else {
+            throw AetherError.resourceUnavailable("Cannot verify native preview visibility")
+        }
+        guard rows.count == 1, let row = rows.first,
+              (row[kCGWindowNumber as String] as? NSNumber)?.uint32Value == original.id.rawValue,
+              (row[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == original.processID,
+              (row[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue == true else {
+            removeOverlay()
+            throw AetherError.invalidState("Native window disappeared, became off-screen or changed owner; preview removed")
+        }
     }
 
     private func requireUnchanged(_ current: WindowDescriptor, original: WindowDescriptor) throws {

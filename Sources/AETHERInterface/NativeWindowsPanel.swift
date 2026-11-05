@@ -8,6 +8,7 @@ enum WindowPanelCommand {
     case focus(RuntimeWindowHandle)
     case setFrame(RuntimeWindowHandle, CodableRect)
     case preview(RuntimeWindowHandle)
+    case livePreview(RuntimeWindowHandle)
 }
 
 /// Native instrument-panel styling: compact capability labels and explicit, guarded commands.
@@ -36,7 +37,7 @@ struct NativeWindowsPanel: View {
                     .keyboardShortcut(.cancelAction)
                 }
             }
-            Text("Native control needs Accessibility only. Preview captures just the selected window for up to five seconds and requires explicit Screen Recording consent. It never replaces, hides or moves the original. Moving or resizing ends the preview.")
+            Text("Native control needs Accessibility only. Snapshot 5s captures one static image, not a recording stream. Live diagnostic continuously captures and macOS may show recording indicators. Both require Screen Recording consent, never move or hide the original, and end if the target changes.")
                 .font(.callout).foregroundStyle(.secondary)
             if !runtime.screenRecordingGranted {
                 Label("Preview unavailable: grant Screen Recording in Overview, then restart if macOS requests it.", systemImage: "lock.shield")
@@ -96,9 +97,12 @@ struct NativeWindowsPanel: View {
                 if window.isMinimized { Text("Minimized").font(.caption) }
                 if !window.isOnScreen { Text("Off-screen").font(.caption) }
                 Spacer()
-                Button("Preview 5s") { if let handle = window.runtimeHandle { submit(.preview(handle)) } }
+                Button("Snapshot 5s") { if let handle = window.runtimeHandle { submit(.preview(handle)) } }
                     .disabled(window.runtimeHandle == nil || !runtime.screenRecordingGranted || !window.isOnScreen || window.isMinimized)
-                    .help("Capture this window on demand; excluded applications are rejected before capture")
+                    .help("One static screenshot held for five seconds; no continuous SCStream. System privacy policy still applies.")
+                Button("Live diagnostic") { if let handle = window.runtimeHandle { submit(.livePreview(handle)) } }
+                    .disabled(window.runtimeHandle == nil || !runtime.screenRecordingGranted || !window.isOnScreen || window.isMinimized)
+                    .help("Explicit continuous recording for up to five seconds. macOS recording indicators are expected.")
                 Button("Focus") { if let handle = window.runtimeHandle { submit(.focus(handle)) } }
                     .disabled(window.runtimeHandle == nil || !window.capabilities.canFocus)
                 Button("Center") { position(window, half: false) }

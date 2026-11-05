@@ -1,11 +1,11 @@
-# AETHER 1.0.6 (build 7)
+# AETHER 1.0.7 (build 8)
 ## The Desktop, in Motion.
 
 AETHER is a native macOS window-management and visual-effects system built with Swift, AppKit, SwiftUI, ScreenCaptureKit and Metal.
 
 **Product direction:** hybrid native-window control + temporary Metal overlays; effects-first; public APIs as the stable baseline; advanced integrations isolated behind optional adapters.
 
-> Engineering status: M0 and M1 were accepted locally. The consented M2 capture/overlay proof now passes on the local Mac (`AX=true`, `Recording=true`, secure input off), including cancellation and native geometry/focus checks. Full M2 platform acceptance and the broader Living Window Gate 0 remain **pending**: physical display/recovery checks and M3 animation are not certified. No private API behavior is assumed to work, and catalog descriptors are not shipped effects.
+> Engineering status: M0 and M1 were accepted locally; 1.0.7 (build 8) passed local validation, including three complete post-fix consented capture suites. Both apps were rebuilt and launched, with verified bundle versions and completed Quick Look/Finder refresh. Full M2 platform acceptance and the broader Living Window Gate 0 remain **pending**: physical display/OS-indicator, SDK fault, recovery and macOS 14 runtime checks are not certified; M3 has not started. No private API behavior is assumed to work, and catalog descriptors are not shipped effects.
 
 ## Open in Xcode
 
@@ -19,11 +19,11 @@ AETHER is a native macOS window-management and visual-effects system built with 
 
 Default validation does not auto-run opted-in live mutation gates (M1 fixtures and ScreenCaptureKit consent-dependent capture tests).
 
-Latest consented capture validation: three consecutive suites passed with 12 functions executed and two permission-denial functions inapplicable because Recording was granted; the separate native suite passed all 14 tests. The initial capture suite failed a focus assertion when macOS UserNotificationCenter became frontmost; no assertion or engine code was changed before the successful repetitions. GPU tests verify real Metal submissions, not physical scanout. Interactive gates require an unlocked desktop, secure input finished and explicit permissions; neither script unlocks the session or grants access.
+Historical pre-snapshot 1.0.7 validation passed three complete capture suites (16 functions / 18 cases executed, two denial skips each), separate native regression 14/14, default validation (34 functions / 39 cases, 20 skips; inventory 54 functions / 61 cases) and both app builds. The earlier focus, closure and startup-timeout failures remain recorded in `Documentation/M2_VALIDATION.md`. GPU tests verify real Metal completion, not physical scanout. Interactive gates require an unlocked desktop, secure input finished and explicit permissions; neither script unlocks the session or grants access.
 
-Version 1.0.6 adds live movement, minimization and closure/recovery cases. They wait for a real GPU-completed frame and reuse the same preview coordinator after interruption. Target closure exposed an already-stopped ScreenCaptureKit cleanup error; the fix recognizes only Apple's exact error domain/code, never arbitrary stop failures. See `Documentation/M2_VALIDATION.md` for validation results and retained failed attempts.
+Version 1.0.7 fixes Stop during startup leaving Start waiting for its callback timeout without abandoning SDK cleanup; 1.0.6 added target interruption/recovery and narrow already-stopped handling. The current increment additionally makes one-shot snapshots the normal preview path, retaining live streams as an explicit diagnostic.
 
-Final 1.0.6 validation passes Swift and both app builds, default tests (34 functions / 39 cases, 17 skips), four post-fix capture suites (13 functions / 15 cases, two denial skips each) and separate native regression 14/14. Final live line coverage: capture lease 93.56%, preview coordinator 93.39%; untested failure branches and physical platform checks remain explicit.
+Final current validation passed: inventory **60 functions / 69 expanded cases**, default **34 functions / 39 cases executed, 26 skips**, and both app builds (`/tmp/aether-snapshot-final-validation.log`). Three complete post-fix capture suites each passed **22 functions / 26 cases**, with two denial skips (24-function / 28-case capture inventory); separate native regression passed **14/14**, no skips. Fresh same-instrumentation default/capture/native profiles were explicitly merged: final line coverage is snapshot lease **95.20%**, stream lease **94.95%**, capture coordinator **92.86%**, preview **94.12%**, Metal presenter **87.86%**, total **84.49%**. Earlier failures and pre-snapshot metrics remain retained, not relabeled as final passes. See `Documentation/M2_VALIDATION.md` for exact logs, verified build metadata and local relaunch evidence.
 
 ## Current bootstrap and permissions
 
@@ -41,34 +41,35 @@ For live integration, quit any running Test Lab instance, then run `bash Scripts
 
 ## M2 implementation snapshot (not gate-certified)
 
-The capture/overlay vertical slice has passed local consent-based runtime validation. Full platform certification remains pending the manual checks below; see `Documentation/M2_VALIDATION.md` for exact evidence and the initial focus failure.
+The normal snapshot and explicit stream/overlay paths passed local consent-based runtime validation, including three complete post-fix suites. Full platform certification remains pending; see `Documentation/M2_VALIDATION.md` for evidence, retained failures and remaining checks.
 
-After explicitly granting Screen Recording, open **Windows → Preview 5s**. **Stop preview**, Escape or leaving the panel cancels the transaction. Startup never starts capture; the original window remains interactive and authoritative. Add excluded bundle IDs to `captureExcludedBundleIDs` in the configuration file and restart after edits; set `effectsEnabled` to false to disable preview startup. Known credential-family exclusions are not an exhaustive detector of protected content.
+After explicitly granting Screen Recording, open **Windows → Snapshot 5s** for one intentionally static image. **Live diagnostic** explicitly selects continuous capture; OS recording indicators are expected there. **Stop preview**, Escape or leaving the panel cancels the transaction. Startup never starts capture; the original window remains interactive and authoritative. Add excluded bundle IDs to `captureExcludedBundleIDs` in configuration and restart after edits; set `effectsEnabled` to false to disable preview startup. Known credential-family exclusions are not an exhaustive protected-content detector.
 
 To validate only controlled Test Lab capture, quit Test Lab and run `bash Scripts/test-capture-integration.sh`. The script requires already-granted Accessibility and Screen Recording and never requests or alters permissions. The suite moves/restores and minimizes/restores fixture A, and closes a separate **M2 Fixture Capture Disposable**. Relaunch Test Lab before repeating the entire live suite; M1's disposable is independent. Never run native mutations and capture tests concurrently.
 
-- Capture callback path implemented with immutable BGRA `Data` copied on a serial capture-owner queue.
-- `SCStreamConfiguration` currently targets bounded throughput: queue depth `3`, newest-only async buffering (`1`), max `1600` px per edge, `30fps`, no audio/cursor/shadows.
+- `WindowPreviewCoordinator.preview(..., mode: .snapshot)` defaults to one `SCScreenshotManager.captureImage` screenshot: no `SCStream` and no screenshot refresh loop. Serial-owner conversion hands off immutable BGRA `Data`, at most `1600` px per edge.
+- Screenshot SDK inputs and successful lease ownership are released before static Metal presentation. Freshness is checked only before first presentation (receipt age at most `1s`); the retained texture is intentionally static for at most `5s`.
+- Explicit `.live` diagnostic uses continuous `30fps` `SCStream`: queue depth `3`, newest-only async buffering (`1`), max `1600` px per edge, no audio/cursor/shadows.
 - Privacy controls include built-in credential-family exclusions plus user-defined `configuration.captureExcludedBundleIDs`; secure-input and permission checks are enforced.
-- Capture session ownership is single-lease actor-driven with start deadline `5s` and stop deadline `3s`; failed stop retains the lease and the next preview retries cleanup before opening a new stream. The exact SCK `attemptToStopStreamState` result confirms an already-stopped/nonexistent stream only when startup is no longer pending; output removal is still required and errors remain visible.
-- ID-only capture start is rejected; callers must pass a validated `RuntimeWindowHandle` and revalidate through `NativeWindowService.validatedWindow` before/after capture start.
-- Core preview orchestration limits runtime to 5 seconds, requires first complete frame within 2 seconds, drops stale handoff older than 1 second, monitors permission/secure-input every 100ms, and revalidates identity/frame every 500ms with bounded AX latency.
+- Snapshot and stream ownership share one mutually exclusive lease. Screenshot wait/live startup deadline is `5s`; cleanup has an independent `3s` deadline. Stop cancels the Swift waiter, not SDK callbacks: ownership is retained until actual completion/confirmed cleanup, and unconfirmed cleanup blocks both modes until retry. Detailed stream error handling is in `Documentation/API_CONTRACTS.md` and `Documentation/M2_VALIDATION.md`.
+- ID-only start is rejected; callers pass a validated `RuntimeWindowHandle` and revalidate before/after asynchronous capture.
+- Both modes check permission/secure input and exact CG window ID/PID/on-screen visibility every `100ms` before AX. Callers validate after capture/before presentation; periodic AX identity/frame validation starts `500ms` after monitor start, then repeats every `500ms` plus bounded AX latency. This avoids an immediate duplicate AX query racing native minimization; a CG-only check alone did not fix the retained timeout. No timeout budget or interruption assertion was relaxed. Live additionally requires a first complete frame within `2s` and checks every handoff for age over `1s`.
 - Overlay presentation uses a non-activating, non-interactive AppKit panel ordered relative to the native window; drawable size is bounded to `3200` px per edge.
 - GPU submission is serialized to one in-flight command; completion uses a 750ms timeout while retaining resources until real command completion; remove is immediate and idempotent.
 
 Current known limitations (still blocking M2 gate acceptance):
 
-- Consented tests validate fresh ScreenCaptureKit frames reaching Metal, configured exclusions, cancellation, target move/minimize/close and same-coordinator recovery; they do not certify every lifecycle/failure path.
-- `framesPresented` currently counts GPU command completion, not verified on-screen presentation.
+- Final current suites cover snapshot/stream capture-to-Metal, exclusions, cancellation, interruptions and ownership recovery; retained failed attempts remain failures. Passing local suites do not certify every lifecycle/failure path or SDK callback order.
+- Successful snapshot `framesPresented == 1` means one GPU-completed submission, not physical scanout or refreshed content throughout the static hold.
 - Texture-memory diagnostics are estimated (`allocatedTextureBytes`) and do not represent total GPU allocation.
 - Preview is diagnostic, not an M3 animation; the original window remains visible and authoritative.
-- Physical multi-display Spaces/full-screen behavior and crash-recovery guarantees remain manual validation items.
+- Physical multi-display/Spaces/full-screen and OS-indicator behavior, SDK faults, crash recovery and macOS 14 runtime remain pending manual/platform checks.
 
-Screen Recording remains part of the approved main visual-effects path. Native move/resize can use Accessibility without capture, but deforming another app's captured content requires authorization. [Wobbly](https://github.com/jsgrrchg/Wobbly) uses the same capture-plus-Metal principle and also requires Screen Recording. It is GPL-3.0-or-later: it is a reference, not a source dependency. AeroSpace is a useful tiling reference but documents a private AX-to-window-ID API, which is not an approved stable dependency for AETHER. No permission bypass is proposed.
+Screen Recording remains required for both preview modes and the approved visual-effects path. Native move/resize can use Accessibility without capture. At Wobbly commit `84147639eb5b285bca75c63ccabfde9a88ad5cfa`, [`Sources/Wobbly/WindowCapture.swift`](https://github.com/jsgrrchg/Wobbly/blob/84147639eb5b285bca75c63ccabfde9a88ad5cfa/Sources/Wobbly/WindowCapture.swift) uses one-shot `SCScreenshotManager.captureSampleBuffer`, not continuous `SCStream`; AETHER independently uses `captureImage` from Apple's public [SCScreenshotManager](https://developer.apple.com/documentation/screencapturekit/scscreenshotmanager) API. This is a public-API design comparison only: no GPL source was copied, and neither Wobbly's launch warmup capture nor off-screen window parking was adopted. No private flags, indicator suppression or permission bypass is used; one-shot capture is not an unconditional guarantee of absent macOS indicators. AeroSpace's private AX-to-window-ID API is not an approved stable dependency.
 
 See `TODO.md`, `IMPLEMENTATION_STATUS.md` and `Documentation/MILESTONE_TASKS.md` for the actual milestone boundary. The owner-provided source repository is [Invernomut0/AETHER](https://github.com/Invernomut0/AETHER), tracked as `origin` on branch `main`. Remote CI results must be checked separately from local validation.
 
-Local validation evidence and remaining manual checks are recorded in `Documentation/M0_VALIDATION.md`, `Documentation/M1_VALIDATION.md`, and `Documentation/M2_VALIDATION.md` (local live proof passed; full platform acceptance pending).
+Local validation evidence and remaining checks are recorded in `Documentation/M0_VALIDATION.md`, `Documentation/M1_VALIDATION.md`, and `Documentation/M2_VALIDATION.md` (1.0.7 passed local validation; both rebuilt apps launched; full platform acceptance pending).
 
 The package manifest targets macOS 14.0 and Apple Silicon as the primary architecture. Some advanced APIs and behaviors are availability-gated and must be checked against the SDK installed on the build machine.
 

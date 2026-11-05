@@ -5,7 +5,7 @@ import CoreGraphics
 import ApplicationServices
 import Carbon
 import AETHERShared
-import AETHERCapture
+@testable import AETHERCapture
 import AETHERWindowManager
 import AETHERCore
 
@@ -200,8 +200,10 @@ struct CapturePipelineTests {
     @Test("Idle capture cleanup is idempotent and never requires consent")
     func idleCleanupIsIdempotent() async throws {
         let capture = ScreenCaptureCoordinator()
+        #expect(await capture.ownedSessionIDs.isEmpty)
         try await capture.stopAllCaptures()
         try await capture.stopAllCaptures()
+        #expect(await capture.ownedSessionIDs.isEmpty)
     }
 
     @Test("Live preview integration presents fresh frames and removes overlay", .enabled(if: runCaptureIntegration))
@@ -224,7 +226,7 @@ struct CapturePipelineTests {
         let frontmostBefore = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
         let preview = WindowPreviewCoordinator(windows: service)
-        let report = try await preview.preview(handle, configuration: .default, duration: .seconds(1))
+        let report = try await preview.preview(handle, configuration: .default, duration: .seconds(1), mode: .live)
 
         #expect(report.framesPresented > 0)
         #expect(report.overlayRemoved)
@@ -268,7 +270,7 @@ struct CapturePipelineTests {
         let handle = try #require(fixture.runtimeHandle)
         let original = try #require(fixture.frame?.cgRect)
         let preview = WindowPreviewCoordinator(windows: service)
-        let task = Task { try await preview.preview(handle, configuration: .default) }
+        let task = Task { try await preview.preview(handle, configuration: .default, mode: .live) }
         do {
             // Includes the separate five-second capture-start budget and first-frame budget.
             let deadline = ContinuousClock.now.advanced(by: .seconds(8))
@@ -299,6 +301,16 @@ struct CapturePipelineTests {
     @Test("Native target interruption removes the overlay and permits coordinator reuse",
           .enabled(if: runCaptureIntegration), arguments: CaptureInterruption.allCases)
     func liveTargetInterruptionAndRecovery(_ interruption: CaptureInterruption) async throws {
+          try await checkTargetInterruption(interruption, mode: .live)
+        }
+
+        @Test("Static snapshot target movement/minimization removes the overlay and permits reuse",
+            .enabled(if: runCaptureIntegration), arguments: [CaptureInterruption.move, .minimize])
+        func liveSnapshotTargetInterruption(_ interruption: CaptureInterruption) async throws {
+          try await checkTargetInterruption(interruption, mode: .snapshot)
+        }
+
+        private func checkTargetInterruption(_ interruption: CaptureInterruption, mode: WindowPreviewMode) async throws {
         try #require(CGPreflightScreenCaptureAccess(), "Grant Recording explicitly before opting in")
         try #require(AXIsProcessTrusted(), "Grant Accessibility explicitly before opting in")
         let service = NativeWindowService()
@@ -309,7 +321,7 @@ struct CapturePipelineTests {
         // This reference never leaves MainActor and cannot retarget another AX object on PID reuse.
         let element = try fixtureAXWindow(fixture)
         let preview = WindowPreviewCoordinator(windows: service)
-        let task = Task { try await preview.preview(handle, configuration: .default) }
+        let task = Task { try await preview.preview(handle, configuration: .default, mode: mode) }
         var mutationAttempted = false
         var operationError: (any Error)?
         do {
@@ -348,7 +360,7 @@ struct CapturePipelineTests {
                 default:
                     throw error // In particular, never accept failed cleanup, timeout or cancellation.
                 }
-                print("M2 \(interruption.rawValue): observed \(error)")
+                print("M2 \(mode) \(interruption.rawValue): observed \(error)")
             }
             #expect(ContinuousClock.now - started < .seconds(10))
             #expect(!preview.isOverlayVisible)
@@ -369,8 +381,10 @@ struct CapturePipelineTests {
             // Reuse the SAME capture owner and renderer while the native mutation is still in effect.
             let recovery = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[1])
             let recoveryHandle = try #require(recovery.runtimeHandle)
-            let report = try await preview.preview(recoveryHandle, configuration: .default, duration: .seconds(1))
+            let report = try await preview.preview(recoveryHandle, configuration: .default, duration: .seconds(1), mode: mode)
             #expect(report.framesPresented > 0)
+            #expect(report.mode == mode)
+            if mode == .snapshot { #expect(report.framesPresented == 1) }
             #expect(report.overlayRemoved && report.nativeFrameUnchanged)
             #expect(!preview.isOverlayVisible)
         } catch { operationError = error }
@@ -390,6 +404,357 @@ struct CapturePipelineTests {
             #expect(WindowGeometry.approximatelyEqual(restored, original))
         }
         if let operationError { throw operationError }
+    }
+
+    @Test("Cancellation of an observed pending startup releases ownership and permits real capture",
+          .enabled(if: runCaptureIntegration))
+    func liveStartupCancellationAndReuse() async throws {
+        try #require(CGPreflightScreenCaptureAccess() && AXIsProcessTrusted(), "Pre-granted Recording/AX required")
+        let service = NativeWindowService()
+        let fixture = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[0])
+        let handle = try #require(fixture.runtimeHandle)
+        let request = try CaptureRequest(window: try await service.validatedWindow(handle), excludedBundleIDs: [])
+        let capture = ScreenCaptureCoordinator()
+        let startup = Task { try await capture.startCapture(request: request) }
+        do {
+            // Observe an actual registered lease, not a guessed delay or pre-cancelled task.
+            let pendingID = try await requirePendingCaptureID(in: capture)
+            startup.cancel()
+            switch await startup.result {
+            case .failure(let error) where error is CancellationError:
+                break
+            case .failure(let error):
+                throw error // Cleanup failure is never accepted as cancellation.
+            case .success:
+                throw CapturePipelineAssertionError(message: "Pending startup ignored cancellation")
+            }
+            #expect(await capture.ownedSessionIDs.isEmpty)
+            #expect(await capture.isCapturing(sessionID: pendingID) == false)
+
+            let current = try await service.validatedWindow(handle)
+            let recoveredID = try await capture.startCapture(request: CaptureRequest(window: current, excludedBundleIDs: []))
+            _ = try await service.validatedWindow(handle)
+            let stream = try await capture.frames(sessionID: recoveredID)
+            let frame = try await firstCompleteCaptureFrame(from: stream)
+            #expect(frame.sessionID == recoveredID && recoveredID != pendingID)
+            try await capture.stopCaptureReportingErrors(sessionID: recoveredID)
+            #expect(await capture.ownedSessionIDs.isEmpty)
+        } catch {
+            startup.cancel()
+            _ = await startup.result
+            try await capture.stopAllCaptures()
+            throw error
+        }
+    }
+
+    @Test("Stop during an observed pending startup terminates Start and allows immediate reuse",
+          .enabled(if: runCaptureIntegration))
+    func liveStopDuringStartupAndReuse() async throws {
+        try #require(CGPreflightScreenCaptureAccess() && AXIsProcessTrusted(), "Pre-granted Recording/AX required")
+        let service = NativeWindowService()
+        let fixture = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[0])
+        let handle = try #require(fixture.runtimeHandle)
+        let request = try CaptureRequest(window: try await service.validatedWindow(handle), excludedBundleIDs: [])
+        let capture = ScreenCaptureCoordinator()
+        let startup = Task { try await capture.startCapture(request: request) }
+        do {
+            let pendingID = try await requirePendingCaptureID(in: capture)
+            let stoppedAt = ContinuousClock.now
+            try await capture.stopAllCaptures()
+            switch await startup.result {
+            case .failure(let error) where error is CancellationError:
+                break
+            case .failure(let error):
+                throw error // Timeout or failed teardown cannot masquerade as Stop cancellation.
+            case .success:
+                throw CapturePipelineAssertionError(message: "Stopped startup returned a session")
+            }
+            #expect(ContinuousClock.now - stoppedAt < .seconds(4))
+            #expect(await capture.ownedSessionIDs.isEmpty)
+            let current = try await service.validatedWindow(handle)
+            let recoveredID = try await capture.startCapture(request: CaptureRequest(window: current, excludedBundleIDs: []))
+            _ = try await service.validatedWindow(handle)
+            let stream = try await capture.frames(sessionID: recoveredID)
+            let frame = try await firstCompleteCaptureFrame(from: stream)
+            #expect(frame.sessionID == recoveredID && recoveredID != pendingID)
+            try await capture.stopCaptureReportingErrors(sessionID: recoveredID)
+            #expect(await capture.ownedSessionIDs.isEmpty)
+        } catch {
+            startup.cancel()
+            _ = await startup.result
+            try await capture.stopAllCaptures()
+            throw error
+        }
+    }
+
+    @Test("Concurrent Start and cancelled/normal Stop callers preserve single ownership across three real cycles",
+          .enabled(if: runCaptureIntegration))
+    func liveConcurrentCaptureOwnershipCycles() async throws {
+        try #require(CGPreflightScreenCaptureAccess() && AXIsProcessTrusted(), "Pre-granted Recording/AX required")
+        let service = NativeWindowService()
+        let fixture = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[0])
+        let handle = try #require(fixture.runtimeHandle)
+        let capture = ScreenCaptureCoordinator()
+        var completedIDs: Set<CaptureSessionID> = []
+        do {
+            for cycle in 1...3 {
+                let current = try await service.validatedWindow(handle)
+                let request = try CaptureRequest(window: current, excludedBundleIDs: [])
+                let first = Task { try await capture.startCapture(request: request) }
+                let second = Task { try await capture.startCapture(request: request) }
+                let outcomes = await (first.result, second.result)
+                let results = [outcomes.0, outcomes.1]
+                let startedIDs = results.compactMap { try? $0.get() }
+                try #require(startedIDs.count == 1, "Concurrent starts must produce exactly one session")
+                for result in results {
+                    if case .failure(let error) = result {
+                        guard let error = error as? AetherError, case .invalidState = error else { throw error }
+                    }
+                }
+                let id = startedIDs[0]
+                #expect(completedIDs.insert(id).inserted)
+                #expect(await capture.ownedSessionIDs == [id])
+                #expect(await capture.isCapturing(sessionID: id))
+                _ = try await service.validatedWindow(handle)
+                let stream = try await capture.frames(sessionID: id)
+                let frame = try await firstCompleteCaptureFrame(from: stream)
+                #expect(frame.sessionID == id && frame.metadata.isComplete)
+                #expect(frame.metadata.width == frame.pixels.width && frame.metadata.height == frame.pixels.height)
+
+                let cancelledStop = Task {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                    try await capture.stopCaptureReportingErrors(sessionID: id)
+                }
+                let normalStop = Task { try await capture.stopCaptureReportingErrors(sessionID: id) }
+                let stops = await (cancelledStop.result, normalStop.result)
+                try stops.0.get()
+                try stops.1.get()
+                #expect(await capture.ownedSessionIDs.isEmpty)
+                #expect(await capture.isCapturing(sessionID: id) == false)
+                // At most one newest-only buffered pre-stop frame may remain; delivery then ends.
+                let bufferedFrames = try await withThrowingTaskGroup(of: Int.self) { group in
+                    group.addTask {
+                        var count = 0
+                        for try await _ in stream {
+                            count += 1
+                            guard count <= 1 else {
+                                throw CapturePipelineAssertionError(message: "Stream delivered new frames after confirmed Stop")
+                            }
+                        }
+                        return count
+                    }
+                    group.addTask {
+                        try await Task.sleep(for: .seconds(1))
+                        throw AetherError.timeout("Stopped stream did not finish within one second")
+                    }
+                    defer { group.cancelAll() }
+                    return try #require(try await group.next())
+                }
+                #expect(bufferedFrames <= 1)
+                try await capture.stopCaptureReportingErrors(sessionID: id)
+                try await capture.stopAllCaptures()
+                #expect(await capture.ownedSessionIDs.isEmpty)
+                print("M2 concurrency cycle \(cycle): real frame, one owner, both Stop callers completed")
+            }
+            #expect(completedIDs.count == 3)
+        } catch {
+            try await capture.stopAllCaptures()
+            throw error
+        }
+    }
+
+    @Test("One-shot snapshot releases all ownership and default preview presents one static frame",
+          .enabled(if: runCaptureIntegration))
+    func liveSnapshotAndDefaultPreview() async throws {
+        try #require(CGPreflightScreenCaptureAccess() && AXIsProcessTrusted(), "Pre-granted Recording/AX required")
+        let service = NativeWindowService()
+        let fixture = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[0])
+        let handle = try #require(fixture.runtimeHandle)
+        let original = try #require(fixture.frame?.cgRect)
+        let frontmostBefore = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let capture = ScreenCaptureCoordinator()
+        let request = try CaptureRequest(window: try await service.validatedWindow(handle), excludedBundleIDs: [])
+        let frame = try await capture.captureSnapshot(request: request)
+        _ = try await service.validatedWindow(handle)
+        #expect(frame.metadata.isComplete)
+        #expect(frame.pixels.width > 0 && frame.pixels.width <= BGRAPixelFrame.maximumDimension)
+        #expect(frame.pixels.height > 0 && frame.pixels.height <= BGRAPixelFrame.maximumDimension)
+        #expect(frame.pixels.bytes.count == frame.pixels.bytesPerRow * frame.pixels.height)
+        #expect(frame.pixels.bytes.contains { $0 != 0 })
+        #expect(ProcessInfo.processInfo.systemUptime - frame.receivedAtUptime <= 1)
+        #expect(await capture.ownedSessionIDs.isEmpty)
+        #expect(await capture.isCapturing(sessionID: frame.sessionID) == false)
+        let secondRequest = try CaptureRequest(window: try await service.validatedWindow(handle), excludedBundleIDs: [])
+        let second = try await capture.captureSnapshot(request: secondRequest)
+        #expect(second.sessionID != frame.sessionID && second.metadata.isComplete)
+        #expect(await capture.ownedSessionIDs.isEmpty)
+        try await capture.stopAllCaptures()
+
+        let preview = WindowPreviewCoordinator(windows: service)
+        let report = try await preview.preview(handle, configuration: .default, duration: .seconds(1))
+        #expect(report.mode == .snapshot && report.framesPresented == 1)
+        #expect(report.overlayRemoved && report.nativeFrameUnchanged)
+        #expect(!preview.isOverlayVisible)
+        #expect(WindowGeometry.approximatelyEqual(try #require(cgWindowFrame(windowID: fixture.id)), original))
+        #expect(NSWorkspace.shared.frontmostApplication?.processIdentifier == frontmostBefore)
+    }
+
+    @Test("Snapshot cancellation and Stop retain pending callbacks until cleanup, then allow reuse",
+          .enabled(if: runCaptureIntegration), arguments: [false, true])
+    func liveSnapshotCancellationAndReuse(stopInsteadOfCancel: Bool) async throws {
+        try #require(CGPreflightScreenCaptureAccess() && AXIsProcessTrusted(), "Pre-granted Recording/AX required")
+        let service = NativeWindowService()
+        let fixture = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[0])
+        let handle = try #require(fixture.runtimeHandle)
+        let request = try CaptureRequest(window: try await service.validatedWindow(handle), excludedBundleIDs: [])
+        let capture = ScreenCaptureCoordinator()
+        let snapshot = Task { try await capture.captureSnapshot(request: request) }
+        do {
+            let pendingID = try await requirePendingCaptureID(in: capture)
+            if stopInsteadOfCancel { try await capture.stopAllCaptures() } else { snapshot.cancel() }
+            switch await snapshot.result {
+            case .failure(let error) where error is CancellationError: break
+            case .failure(let error): throw error
+            case .success: throw CapturePipelineAssertionError(message: "Cancelled snapshot delivered a frame")
+            }
+            #expect(await capture.ownedSessionIDs.isEmpty)
+            let current = try await service.validatedWindow(handle)
+            let recovered = try await capture.captureSnapshot(request: CaptureRequest(window: current, excludedBundleIDs: []))
+            _ = try await service.validatedWindow(handle)
+            #expect(recovered.sessionID != pendingID && recovered.metadata.isComplete)
+            #expect(ProcessInfo.processInfo.systemUptime - recovered.receivedAtUptime <= 1)
+            #expect(await capture.ownedSessionIDs.isEmpty)
+        } catch {
+            snapshot.cancel()
+            _ = await snapshot.result
+            try await capture.stopAllCaptures()
+            throw error
+        }
+    }
+
+    @Test("Snapshot exclusions and pre-cancellation never acquire ownership",
+          .enabled(if: runCaptureIntegration))
+    func liveSnapshotPrivacyBoundaries() async throws {
+        let service = NativeWindowService()
+        let fixture = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[0])
+        let capture = ScreenCaptureCoordinator()
+        try await expectAetherError(.permissionDenied) {
+            _ = try await capture.captureSnapshot(request: CaptureRequest(window: fixture, excludedBundleIDs: [Self.fixtureBundleIdentifier]))
+        }
+        #expect(await capture.ownedSessionIDs.isEmpty)
+        let request = try CaptureRequest(window: fixture, excludedBundleIDs: [])
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await capture.captureSnapshot(request: request)
+        }
+        await #expect(throws: CancellationError.self) { _ = try await cancelled.value }
+        #expect(await capture.ownedSessionIDs.isEmpty)
+    }
+
+    @Test("Default snapshot preview cancellation removes its static overlay and remains reusable",
+          .enabled(if: runCaptureIntegration))
+    func liveSnapshotPreviewCancellation() async throws {
+        let service = NativeWindowService()
+        let fixture = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[0])
+        let handle = try #require(fixture.runtimeHandle)
+        let original = try #require(fixture.frame?.cgRect)
+        let preview = WindowPreviewCoordinator(windows: service)
+        let task = Task { try await preview.preview(handle, configuration: .default) }
+        do {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(8))
+            while preview.framesPresented == 0 && ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            try #require(preview.framesPresented == 1 && preview.isOverlayVisible)
+            preview.removeOverlay()
+            #expect(!preview.isOverlayVisible)
+            task.cancel()
+            switch await task.result {
+            case .failure(let error) where error is CancellationError: break
+            case .failure(let error): throw error
+            case .success: throw CapturePipelineAssertionError(message: "Cancelled snapshot preview succeeded")
+            }
+            #expect(WindowGeometry.approximatelyEqual(try #require(cgWindowFrame(windowID: fixture.id)), original))
+            // Cancellation during AX validation can intentionally invalidate its generation.
+            // Refresh the SAME controlled native window, rather than weakening stale-handle checks.
+            let recovered = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[0])
+            try #require(recovered.id == fixture.id && recovered.processID == fixture.processID)
+            let report = try await preview.preview(try #require(recovered.runtimeHandle), configuration: .default, duration: .seconds(1))
+            #expect(report.mode == .snapshot && report.framesPresented == 1 && report.overlayRemoved)
+        } catch {
+            task.cancel()
+            _ = await task.result
+            preview.removeOverlay()
+            throw error
+        }
+    }
+
+    @Test("Snapshot and stream admission share exactly one capture owner",
+          .enabled(if: runCaptureIntegration))
+    func liveSnapshotStreamAdmission() async throws {
+        let service = NativeWindowService()
+        let fixture = try await requireFixtureDescriptor(using: service, title: Self.fixtureTitles[0])
+        let handle = try #require(fixture.runtimeHandle)
+        let request = try CaptureRequest(window: try await service.validatedWindow(handle), excludedBundleIDs: [])
+        let capture = ScreenCaptureCoordinator()
+        let streamID = try await capture.startCapture(request: request)
+        do {
+            try await expectAetherError(.invalidState) { _ = try await capture.captureSnapshot(request: request) }
+            #expect(await capture.ownedSessionIDs == [streamID])
+            try await capture.stopAllCaptures()
+        } catch { try await capture.stopAllCaptures(); throw error }
+        let snapshot = Task { try await capture.captureSnapshot(request: request) }
+        do {
+            let id = try await requirePendingCaptureID(in: capture)
+            try await expectAetherError(.invalidState) { _ = try await capture.startCapture(request: request) }
+            try await expectAetherError(.invalidState) { _ = try await capture.captureSnapshot(request: request) }
+            let frame = try await snapshot.value
+            #expect(frame.sessionID == id && frame.metadata.isComplete)
+            #expect(await capture.ownedSessionIDs.isEmpty)
+            _ = try await service.validatedWindow(handle)
+        } catch {
+            snapshot.cancel()
+            _ = await snapshot.result
+            try await capture.stopAllCaptures()
+            throw error
+        }
+    }
+
+    /// Await an observed inactive lease; fail instead of claiming a pre-cancel or active-stop proof.
+    private func requirePendingCaptureID(in capture: ScreenCaptureCoordinator) async throws -> CaptureSessionID {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        var owned = await capture.ownedSessionIDs
+        while owned.isEmpty && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(1))
+            owned = await capture.ownedSessionIDs
+        }
+        try #require(owned.count == 1, "No startup lease observed within two seconds")
+        let id = try #require(owned.first)
+        try #require(await capture.isCapturing(sessionID: id) == false,
+                     "Startup completed before a pending lease could be observed; boundary not exercised")
+        return id
+    }
+
+    /// Two-second real-frame deadline. The losing structured task is cancelled and awaited.
+    private func firstCompleteCaptureFrame(from stream: AsyncThrowingStream<CapturedFrame, any Error>) async throws -> CapturedFrame {
+        try await withThrowingTaskGroup(of: CapturedFrame.self) { group in
+            group.addTask {
+                for try await frame in stream {
+                    guard frame.metadata.isComplete,
+                          ProcessInfo.processInfo.systemUptime - frame.receivedAtUptime <= 1 else {
+                        throw CapturePipelineAssertionError(message: "Received an incomplete or stale live frame")
+                    }
+                    return frame
+                }
+                throw CapturePipelineAssertionError(message: "Capture ended without a complete frame")
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(2))
+                throw AetherError.timeout("No complete live frame arrived within two seconds")
+            }
+            defer { group.cancelAll() }
+            return try #require(try await group.next())
+        }
     }
 
     /// Strictly local AX ownership: only a uniquely matched, correlated external Test Lab window.
@@ -523,11 +888,13 @@ struct CapturePipelineTests {
 private enum ExpectedAetherError: String {
     case unsupported
     case permissionDenied
+    case invalidState
 
     func matches(_ error: AetherError) -> Bool {
         switch (self, error) {
         case (.unsupported, .unsupported),
-             (.permissionDenied, .permissionDenied):
+               (.permissionDenied, .permissionDenied),
+               (.invalidState, .invalidState):
             return true
         default:
             return false

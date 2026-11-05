@@ -2,7 +2,7 @@
 
 Durations are indicative estimates for one developer with coding-agent assistance, not guarantees.
 
-Local progress (1.0.6 build 7): M0/M1 and the local M2 capture/overlay proof have passed. Consented tests validate fresh ScreenCaptureKit frames, Metal completion, removal, exclusions, cancellation and real target move/minimize/close with same-coordinator recovery. Target closure exposed and now regression-tests an already-stopped cleanup fix. Full M2 acceptance still needs physical display and broader failure/recovery checks. M3 has not started; its animation proof will subsequently be needed for the broader Living Window Gate 0.
+Local progress: 1.0.7 (build 8) passed local validation. M0/M1 and the current local M2 snapshot/stream-overlay proof passed, including startup Stop/concurrent ownership recovery without dropping unconfirmed SDK ownership. The normal preview defaults to one-shot **Snapshot 5s**; explicit **Live diagnostic** retains continuous 30fps SCStream with expected OS recording indicators. Final default validation passed 34 functions / 39 cases with 26 skips (inventory 60/69), both app builds passed, three full post-fix capture suites each passed 22 functions / 26 cases with two denial skips, and separate native regression passed 14/14 with no skips. Final compatible merged line coverage is 84.49% total; historical pre-snapshot metrics remain historical. Both rebuilt apps were launched with verified 1.0.7/build 8 Info.plists; Quick Look/Finder refresh completed. See `M2_VALIDATION.md` for exact logs, failed minimize/CG-only attempts, final monitor scheduling fix and local relaunch evidence. Remote CI review is separate and pending. Full M2 acceptance still needs physical display/OS-indicator and scanout checks, manual recovery, SDK callback/fault orders and macOS 14 runtime evidence. M3 has not started; its animation proof is subsequently needed for Living Window Gate 0.
 
 | Milestone | Focus | Estimate | Exit gate |
 |---|---|---:|---|
@@ -30,9 +30,11 @@ This is the highest-risk technical proof:
 Do not scale up the effect catalog until this gate is reliable.
 
 Current Gate 0 status:
-- Implementation code exists for capture, bounded frame flow, preview orchestration and overlay teardown.
-- Explicit consent-based capture/overlay proof passed locally; full Living Window animation proof remains pending M3.
+- Implementation exists for one-shot snapshots, bounded diagnostic streams, preview orchestration and overlay teardown. Snapshot ownership is released before static Metal presentation; the texture intentionally stays unchanged for at most 5s under native/permission monitoring, not a refresh loop or animation.
+- Current explicit-consent snapshot/stream-overlay proof passed locally in three full post-fix suites; both rebuilt 1.0.7/build 8 apps were launched. The Living Window animation proof remains pending M3.
 - Physical multi-display Spaces/full-screen behavior and crash/recovery evidence are still pending manual validation.
+
+Screen Recording remains required for both modes. One-shot public APIs do not guarantee absent macOS indicators; no private flags, suppression or permission bypass is adopted. The pinned Wobbly comparison in `M2_VALIDATION.md` is public-API design only, not GPL source reuse, launch warmup or off-screen native-window parking.
 
 ## Parallelizable work
 - Shared models, documentation, persistence schema and Test Lab can proceed alongside M1.

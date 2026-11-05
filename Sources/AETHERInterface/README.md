@@ -7,12 +7,14 @@ SwiftUI dashboard, settings and diagnostics. The M0 overview owns bootstrap/perm
 Current M2 preview UX behavior:
 
 - Startup does not begin capture.
-- The preview action is explicit from Overview and requires user intent.
-- Preview is capped at 5 seconds, with Stop and Escape cancellation paths.
+- **Windows → Snapshot 5s** is the default, explicit one-shot preview with intentionally static content; **Live diagnostic** explicitly selects continuous streaming with expected OS recording indicators.
+- **Stop preview** and Escape cancel the transaction.
 - Task cancellation on dismissal is explicit and cleanup-oriented.
-- The preview button is disabled when Screen Recording is not granted.
+- Both preview modes require Screen Recording; preview controls are disabled when it is not granted.
 - Permission requests remain explicit user actions; no implicit prompt is issued during normal startup/listing.
 
 Preview is intentionally temporary and non-interactive. It does not replace/hide native windows in this milestone.
+
+See `Documentation/API_CONTRACTS.md` for snapshot/live freshness, monitoring and cleanup semantics. One-shot capture does not guarantee absent macOS indicators; full M2 platform acceptance and M3 animation remain pending.
 
 See `Documentation/MODULES.md` and the relevant acceptance criteria before implementation.
